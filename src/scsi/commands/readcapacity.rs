@@ -3,8 +3,14 @@ use crate::{AumsError};
 use scsi::commands::{Command, CommmandBlockWrapper, Direction};
 use traits::{Buffer, BufferPullable, BufferPushable};
 
-
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
 pub struct ReadCapacityCommand {}
+
+impl ReadCapacityCommand {
+    pub fn new() -> ReadCapacityCommand {
+        ReadCapacityCommand{}
+    }
+}
 
 impl Command for ReadCapacityCommand {
     fn opcode() -> u8 {
@@ -27,8 +33,8 @@ impl BufferPushable for ReadCapacityCommand {
 }
 
 pub struct ReadCapacityResponse {
-    logical_block_address : u32, 
-    block_length : u32
+    pub logical_block_address : u32, 
+    pub block_length : u32
 }
 
 impl BufferPullable for ReadCapacityResponse {

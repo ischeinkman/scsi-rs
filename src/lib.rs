@@ -8,6 +8,8 @@ pub enum ErrorCause {
     ParseError, 
     OutOfInputError, 
     InvalidInputError,
+    UsbTransferError,
+    FlagError, 
     Other,
 }
 

@@ -1,6 +1,6 @@
 use scsi::commands::{Direction, CommmandBlockWrapper, Command};
 use traits::{Buffer, BufferPushable};
-use crate::{AumsError};
+use crate::{AumsError, ErrorCause};
 
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
 pub struct Write10Command {
@@ -8,6 +8,21 @@ pub struct Write10Command {
     transfer_bytes : u32, 
     block_size : u32, 
     transfer_blocks : u16,
+}
+
+impl Write10Command {
+    pub fn new(block_address : u32, transfer_bytes : u32, block_size : u32) -> Result<Write10Command, AumsError> {
+        if transfer_bytes % block_size != 0 {
+            return Err(AumsError::from_cause(ErrorCause::InvalidInputError));
+        }
+        let transfer_blocks = (transfer_bytes / block_size) as u16; 
+        Ok(Write10Command {
+            block_address, 
+            transfer_bytes, 
+            block_size, 
+            transfer_blocks,
+        })
+    }
 }
 
 impl Command for Write10Command {

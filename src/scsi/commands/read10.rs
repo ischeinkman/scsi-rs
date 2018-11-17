@@ -7,8 +7,8 @@ use crate::{AumsError, ErrorCause};
 pub struct Read10Command {
     wrapper : CommmandBlockWrapper,
     block_address : u32, 
-    transfer_bytes : u32, 
-    block_size : u32, 
+    _transfer_bytes : u32, 
+    _block_size : u32, 
     transfer_blocks : u16
 }
 
@@ -22,8 +22,8 @@ impl Read10Command {
         Ok(Read10Command {
             wrapper, 
             block_address, 
-            transfer_bytes, 
-            block_size,
+            _transfer_bytes : transfer_bytes, 
+            _block_size : block_size,
             transfer_blocks, 
         })
     }

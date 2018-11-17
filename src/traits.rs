@@ -10,10 +10,12 @@ pub trait Buffer : Sized {
     fn push_byte(&mut self, byte : u8) -> Result<usize, AumsError> ;
     fn clear(&mut self) -> Result<usize, AumsError> ;
     fn pull_byte(&mut self) -> Result<u8, AumsError>;
-
     fn pull<T : BufferPullable>(&mut self) -> Result<T, AumsError> {
         T::pull_from_buffer(self)
     }
+    fn reset_read_head(&mut self);
+    fn reset_write_head(&mut self);
+    fn expand_by(self, bytes : usize) -> Result<Self, AumsError> ;
 }
 
 pub trait BufferPushable {

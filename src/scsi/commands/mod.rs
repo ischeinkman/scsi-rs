@@ -22,12 +22,12 @@ pub const D_CBW_SIGNATURE : u32 = 0x43425355;
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct CommmandBlockWrapper {
     //TODO: What are these fields?
-    tag : u32, 
-    data_transfer_length : u32, 
+    pub tag : u32, 
+    pub data_transfer_length : u32, 
     flags : u8, 
     lun : u8, 
     cb_length : u8, 
-    direction : Direction,
+    pub direction : Direction,
 }
 
 impl CommmandBlockWrapper {
@@ -65,31 +65,34 @@ pub trait Command : BufferPushable {
     fn opcode() -> u8; 
     fn length() -> u8; 
 }
-const COMMAND_PASSED : u32 = 0; 
-const COMMAND_FAILED : u32 = 1; 
-const PHASE_ERROR : u32 = 2; 
-const SIZE : u32 = 13; 
-const D_CSW_SIGNATURE : u32 = 0x53425355;
 
 pub struct CommandStatusWrapper {
-    tag : u32, 
-    data_residue : u32, 
-    status : u8,
+    pub tag : u32, 
+    _data_residue : u32, 
+    pub status : u8,
+}
+
+impl CommandStatusWrapper {
+    pub const COMMAND_PASSED : u32 = 0; 
+    pub const COMMAND_FAILED : u32 = 1; 
+    pub const PHASE_ERROR : u32 = 2; 
+    pub const SIZE : u32 = 13; 
+    pub const D_CSW_SIGNATURE : u32 = 0x53425355;
 }
 
 impl BufferPullable for CommandStatusWrapper {
     fn pull_from_buffer<B : Buffer>(buffer: &mut B) -> Result<Self, AumsError> {
         let signature = u32::pull_from_buffer(buffer)?;
-        if signature != D_CSW_SIGNATURE {
+        if signature != CommandStatusWrapper::D_CSW_SIGNATURE {
             return Err(AumsError::from_cause(ErrorCause::ParseError));
         }
         let tag = u32::pull_from_buffer(buffer)?;
-        let data_residue = u32::pull_from_buffer(buffer)?;
+        let _data_residue = u32::pull_from_buffer(buffer)?;
         let status = u8::pull_from_buffer(buffer)?;
 
         Ok(CommandStatusWrapper{
             tag, 
-            data_residue, 
+            _data_residue, 
             status
         })
     }

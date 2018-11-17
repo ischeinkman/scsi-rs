@@ -4,7 +4,14 @@ use traits::{Buffer, BufferPushable};
 use crate::AumsError;
 
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
 pub struct TestUnitReady {}
+
+impl TestUnitReady {
+    pub fn new() -> TestUnitReady {
+        TestUnitReady{}
+    }
+}
 
 impl Command for TestUnitReady {
     fn opcode() -> u8 {

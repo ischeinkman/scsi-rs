@@ -1,7 +1,7 @@
 
 use scsi::commands::{CommmandBlockWrapper, Command, Direction};
 use traits::{Buffer, BufferPullable, BufferPushable};
-use crate::{AumsError, ErrorCause};
+use crate::{AumsError};
 
 
 pub struct InquiryCommand {
@@ -48,11 +48,11 @@ impl Command for InquiryCommand {
 
 
 pub struct InquiryResponse {
-    device_qualifier : u8, 
-    device_type : u8, 
-    is_removeable : bool, 
-    spc_version : u8, 
-    response_format : u8, 
+    pub device_qualifier : u8, 
+    pub device_type : u8, 
+    _is_removeable : bool, 
+    _spc_version : u8, 
+    _response_format : u8, 
 }
 
 impl BufferPullable for InquiryResponse {
@@ -61,15 +61,15 @@ impl BufferPullable for InquiryResponse {
         let device_qualifier = bt & 0xe0;
         let device_type = bt & 0x1f; 
         let is_removable_raw = buffer.pull_byte()?;
-        let is_removeable = is_removable_raw == 0x80;
-        let spc_version = buffer.pull_byte()?;
-        let response_format = buffer.pull_byte()? & 0x7;
+        let _is_removeable = is_removable_raw == 0x80;
+        let _spc_version = buffer.pull_byte()?;
+        let _response_format = buffer.pull_byte()? & 0x7;
         Ok(InquiryResponse {
             device_qualifier, 
             device_type, 
-            is_removeable, 
-            spc_version, 
-            response_format
+            _is_removeable, 
+            _spc_version, 
+            _response_format
         })
     }
 }
