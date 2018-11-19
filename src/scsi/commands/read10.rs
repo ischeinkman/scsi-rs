@@ -1,31 +1,38 @@
-
-use scsi::commands::{CommmandBlockWrapper, Command, Direction};
+use scsi::commands::{Command, CommandBlockWrapper, Direction};
 
 use traits::{Buffer, BufferPushable};
-use {AumsError, ErrorCause};
+use error::{ScsiError, ErrorCause};
 
 pub struct Read10Command {
-    block_address : u32, 
-    transfer_bytes : u32, 
-    transfer_blocks : u16
+    block_address: u32,
+    transfer_bytes: u32,
+    transfer_blocks: u16,
 }
 
 impl Read10Command {
-    pub fn new(block_address : u32, transfer_bytes : u32, block_size : u32) -> Result<Read10Command, AumsError> {
+    pub fn new(
+        block_address: u32,
+        transfer_bytes: u32,
+        block_size: u32,
+    ) -> Result<Read10Command, ScsiError> {
         let transfer_blocks = if transfer_bytes % block_size != 0 {
-            return Err(AumsError::from_cause(ErrorCause::NonBlocksizeMultipleLengthError));
-        } else {(transfer_bytes / block_size) as u16};
+            return Err(ScsiError::from_cause(
+                ErrorCause::NonBlocksizeMultipleLengthError,
+            ));
+        } else {
+            (transfer_bytes / block_size) as u16
+        };
 
         Ok(Read10Command {
-            block_address, 
+            block_address,
             transfer_bytes,
-            transfer_blocks, 
+            transfer_blocks,
         })
     }
 }
 
 impl BufferPushable for Read10Command {
-    fn push_to_buffer<B : Buffer>(&self, buffer: &mut B) -> Result<usize, AumsError> {
+    fn push_to_buffer<B: Buffer>(&self, buffer: &mut B) -> Result<usize, ScsiError> {
         let mut rval = self.wrapper().push_to_buffer(buffer)?;
         rval += buffer.push_byte(Read10Command::opcode())?;
         rval += buffer.push_byte(0)?;
@@ -43,7 +50,12 @@ impl Command for Read10Command {
         10
     }
 
-    fn wrapper(&self) -> CommmandBlockWrapper {
-        CommmandBlockWrapper::new(self.transfer_bytes, Direction::IN, 0, Read10Command::length())
+    fn wrapper(&self) -> CommandBlockWrapper {
+        CommandBlockWrapper::new(
+            self.transfer_bytes,
+            Direction::IN,
+            0,
+            Read10Command::length(),
+        )
     }
 }

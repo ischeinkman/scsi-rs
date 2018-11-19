@@ -1,23 +1,29 @@
-use scsi::commands::{Direction, CommmandBlockWrapper, Command};
+use scsi::commands::{Command, CommandBlockWrapper, Direction};
 use traits::{Buffer, BufferPushable};
-use {AumsError, ErrorCause};
+use error::{ScsiError, ErrorCause};
 
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
 pub struct Write10Command {
-    block_address : u32, 
-    transfer_bytes : u32, 
-    transfer_blocks : u16,
+    block_address: u32,
+    transfer_bytes: u32,
+    transfer_blocks: u16,
 }
 
 impl Write10Command {
-    pub fn new(block_address : u32, transfer_bytes : u32, block_size : u32) -> Result<Write10Command, AumsError> {
+    pub fn new(
+        block_address: u32,
+        transfer_bytes: u32,
+        block_size: u32,
+    ) -> Result<Write10Command, ScsiError> {
         if transfer_bytes % block_size != 0 {
-            return Err(AumsError::from_cause(ErrorCause::NonBlocksizeMultipleLengthError));
+            return Err(ScsiError::from_cause(
+                ErrorCause::NonBlocksizeMultipleLengthError,
+            ));
         }
-        let transfer_blocks = (transfer_bytes / block_size) as u16; 
+        let transfer_blocks = (transfer_bytes / block_size) as u16;
         Ok(Write10Command {
-            block_address, 
-            transfer_bytes, 
+            block_address,
+            transfer_bytes,
             transfer_blocks,
         })
     }
@@ -30,13 +36,18 @@ impl Command for Write10Command {
     fn length() -> u8 {
         10
     }
-    fn wrapper(&self) -> CommmandBlockWrapper {
-        CommmandBlockWrapper::new(self.transfer_bytes, Direction::OUT, 0, Write10Command::length())
+    fn wrapper(&self) -> CommandBlockWrapper {
+        CommandBlockWrapper::new(
+            self.transfer_bytes,
+            Direction::OUT,
+            0,
+            Write10Command::length(),
+        )
     }
 }
 
 impl BufferPushable for Write10Command {
-    fn push_to_buffer<B : Buffer>(&self, buffer: &mut B) -> Result<usize, AumsError> {
+    fn push_to_buffer<B: Buffer>(&self, buffer: &mut B) -> Result<usize, ScsiError> {
         let mut rval = self.wrapper().push_to_buffer(buffer)?;
         rval += buffer.push_byte(Write10Command::opcode())?;
         rval += buffer.push_byte(0)?;

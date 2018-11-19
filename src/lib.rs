@@ -1,32 +1,12 @@
 #![no_std]
 
 extern crate byteorder;
-pub mod traits;
-pub mod scsi; 
+pub mod scsi;
+mod traits;
+mod error;
 
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
-pub enum ErrorCause {
-    ParseError, 
-    NonBlocksizeMultipleLengthError,
-    UsbTransferError,
-    FlagError,
-    BufferTooSmallError,
-    UnsupportedOperationError, 
-    InvalidDeviceError, 
-}
-
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
-pub struct AumsError {
-    cause : ErrorCause,
-}
-
-impl AumsError {
-    pub fn from_cause(cause : ErrorCause) -> AumsError {
-        AumsError {
-            cause
-        }
-    }
-}
+pub use error::*;
+pub use traits::*;
 
 #[cfg(test)]
 mod tests {
