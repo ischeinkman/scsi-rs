@@ -1,5 +1,6 @@
 
 use AumsError;
+use ErrorCause;
 
 use byteorder::{ByteOrder, BigEndian, LittleEndian};
 
@@ -10,7 +11,6 @@ pub trait Buffer : Sized {
         self.size() == 0
     }
     fn push_byte(&mut self, byte : u8) -> Result<usize, AumsError> ;
-    fn clear(&mut self) -> Result<usize, AumsError> ;
     fn pull_byte(&mut self) -> Result<u8, AumsError>;
     fn pull<T : BufferPullable>(&mut self) -> Result<T, AumsError> {
         T::pull_from_buffer(self)
@@ -173,7 +173,62 @@ pub trait BufferPullable : Sized{
     fn pull_from_buffer<B : Buffer>(buffer : &mut B) -> Result<Self, AumsError>;
 }
 
-pub trait CommunicationChannel {
-    fn out_transfer<B : Buffer>(&mut self, bytes : &B) -> Result<usize, AumsError>;
-    fn in_transfer<B : Buffer>(&mut self, buffer : &mut B) -> Result<usize, AumsError>;
+
+pub struct SliceBuffer<'a> {
+    read_idx : usize, 
+    write_idx : usize, 
+    inner : &'a mut [u8]
+}
+
+impl <'a> SliceBuffer<'a> {
+    pub fn new(slice : &'a mut [u8]) -> SliceBuffer<'a> {
+        SliceBuffer {
+            read_idx : 0, 
+            write_idx : 0, 
+            inner : slice
+        }
+    }
+
+    pub fn into_inner(self) -> &'a mut [u8] {
+        self.inner
+    }
+}
+impl <'a> Buffer for SliceBuffer<'a> {
+    fn size(&self) -> usize {
+        self.write_idx
+    }
+    fn capacity(&self) -> usize {
+        self.inner.len()
+    }
+
+    fn push_byte(&mut self, byte : u8) -> Result<usize, AumsError> {
+        if self.write_idx >= self.inner.len() {
+            Err(AumsError::from_cause(ErrorCause::BufferTooSmallError))
+        }
+        else {
+            self.inner[self.write_idx] = byte;
+            self.write_idx += 1;
+            Ok(1)
+        }
+    }
+    fn pull_byte(&mut self) -> Result<u8, AumsError> {
+        if self.read_idx >= self.write_idx {
+            Err(AumsError::from_cause(ErrorCause::BufferTooSmallError))
+        }
+        else {
+            let bt = self.inner[self.read_idx];
+            self.read_idx += 1;
+            Ok(bt)
+        }
+    }
+    
+    fn reset_read_head(&mut self) {
+        self.read_idx = 0;
+    }
+    fn reset_write_head(&mut self) {
+        self.write_idx = 0;
+    }
+    fn expand_by(self, _bytes : usize) -> Result<Self, AumsError> {
+        Err(AumsError::from_cause(ErrorCause::UnsupportedOperationError))
+    }
 }

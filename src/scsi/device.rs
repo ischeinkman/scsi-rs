@@ -23,7 +23,7 @@ impl <CommType : CommunicationChannel, BuffTypeA : Buffer, BuffTypeB : Buffer, B
         let (_ir, _iw) = transfer_command_raw(&mut comm_channel, &inquiry, &mut in_buffer, &mut out_buffer, &mut scratch_buffer)?;
         let inquiry_resp = InquiryResponse::pull_from_buffer(&mut in_buffer)?;
         if inquiry_resp.device_qualifier != 0 || inquiry_resp.device_type != 0 {
-            return Err(AumsError::from_cause(ErrorCause::InvalidInputError));
+            return Err(AumsError::from_cause(ErrorCause::InvalidDeviceError));
         }
 
         let test_unit = TestUnitReady::new();
@@ -46,7 +46,7 @@ impl <CommType : CommunicationChannel, BuffTypeA : Buffer, BuffTypeB : Buffer, B
     pub fn read<B : Buffer>(&mut self, offset : u32, dest : &mut B) -> Result<usize, AumsError> {
         let remaining = dest.capacity() - dest.size(); 
         if remaining % self.block_size as usize != 0 {
-            return Err(AumsError::from_cause(ErrorCause::InvalidInputError));
+            return Err(AumsError::from_cause(ErrorCause::NonBlocksizeMultipleLengthError));
         }
         let read_command = Read10Command::new(offset , remaining as u32, self.block_size)?;
         transfer_command_raw(&mut self.comm_channel, &read_command, dest, &mut self.out_buffer, &mut self.scratch_buffer).map(|(r, _)| r)
@@ -55,7 +55,7 @@ impl <CommType : CommunicationChannel, BuffTypeA : Buffer, BuffTypeB : Buffer, B
     pub fn write<B : Buffer>(&mut self, offset : u32, src : &mut B) -> Result<usize, AumsError> {
         let remaining = src.capacity() - src.size();
         if remaining % self.block_size as usize != 0 {
-            return Err(AumsError::from_cause(ErrorCause::InvalidInputError));
+            return Err(AumsError::from_cause(ErrorCause::NonBlocksizeMultipleLengthError));
         }
         let write_command = Write10Command::new(offset , remaining as u32, self.block_size)?;
         transfer_command_raw(&mut self.comm_channel, &write_command, &mut self.in_buffer, src, &mut self.scratch_buffer).map(|(r, _)| r)
@@ -65,7 +65,7 @@ impl <CommType : CommunicationChannel, BuffTypeA : Buffer, BuffTypeB : Buffer, B
 
 fn read_csw<C : CommunicationChannel, B : Buffer>(comm_channel : &mut C, scratch_buffer : &mut B) -> Result<CommandStatusWrapper, AumsError> {
     if scratch_buffer.capacity() - scratch_buffer.size() < CommandStatusWrapper::SIZE as usize {
-        return Err(AumsError::from_cause(ErrorCause::InvalidInputError));
+        return Err(AumsError::from_cause(ErrorCause::BufferTooSmallError));
     }
 
     let read_count = comm_channel.in_transfer(scratch_buffer)?;
@@ -117,7 +117,7 @@ fn transfer_command_raw<Usb : CommunicationChannel, C : Command, InBuff : Buffer
     } else { (0, 0) };
     let csw = read_csw(comm_channel, scratch_buffer)?;
     if csw.tag != command.wrapper().tag {
-        return Err(AumsError::from_cause(ErrorCause::ParseError));
+        return Err(AumsError::from_cause(ErrorCause::FlagError));
     }
     Ok((read + CommandStatusWrapper::SIZE as usize, write + command_bytes))
 }

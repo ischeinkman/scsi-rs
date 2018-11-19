@@ -7,11 +7,12 @@ pub mod scsi;
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub enum ErrorCause {
     ParseError, 
-    OutOfInputError, 
-    InvalidInputError,
+    NonBlocksizeMultipleLengthError,
     UsbTransferError,
-    FlagError, 
-    Other,
+    FlagError,
+    BufferTooSmallError,
+    UnsupportedOperationError, 
+    InvalidDeviceError, 
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
@@ -29,8 +30,5 @@ impl AumsError {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
+    //TODO: Tests
 }

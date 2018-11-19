@@ -13,7 +13,7 @@ pub struct Read10Command {
 impl Read10Command {
     pub fn new(block_address : u32, transfer_bytes : u32, block_size : u32) -> Result<Read10Command, AumsError> {
         let transfer_blocks = if transfer_bytes % block_size != 0 {
-            return Err(AumsError::from_cause(ErrorCause::InvalidInputError));
+            return Err(AumsError::from_cause(ErrorCause::NonBlocksizeMultipleLengthError));
         } else {(transfer_bytes / block_size) as u16};
 
         Ok(Read10Command {

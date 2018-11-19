@@ -12,7 +12,7 @@ pub struct Write10Command {
 impl Write10Command {
     pub fn new(block_address : u32, transfer_bytes : u32, block_size : u32) -> Result<Write10Command, AumsError> {
         if transfer_bytes % block_size != 0 {
-            return Err(AumsError::from_cause(ErrorCause::InvalidInputError));
+            return Err(AumsError::from_cause(ErrorCause::NonBlocksizeMultipleLengthError));
         }
         let transfer_blocks = (transfer_bytes / block_size) as u16; 
         Ok(Write10Command {
