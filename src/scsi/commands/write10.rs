@@ -1,6 +1,6 @@
 use scsi::commands::{Direction, CommmandBlockWrapper, Command};
 use traits::{Buffer, BufferPushable};
-use crate::{AumsError, ErrorCause};
+use {AumsError, ErrorCause};
 
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
 pub struct Write10Command {

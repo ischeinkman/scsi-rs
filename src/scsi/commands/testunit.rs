@@ -1,7 +1,7 @@
 
 use scsi::commands::{Direction, Command, CommmandBlockWrapper};
 use traits::{Buffer, BufferPushable};
-use crate::AumsError;
+use AumsError;
 
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]

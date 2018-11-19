@@ -7,8 +7,8 @@ pub mod write10;
 pub mod testunit;
 pub mod requestsense; 
 use traits::{Buffer, BufferPushable, BufferPullable};
-use crate::AumsError;
-use crate::ErrorCause;
+use AumsError;
+use ErrorCause;
 
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]

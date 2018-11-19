@@ -1,4 +1,4 @@
-use crate::AumsError;
+use AumsError;
 use scsi::commands::{Command, CommmandBlockWrapper, Direction};
 use traits::{Buffer, BufferPushable};
 

@@ -5,7 +5,7 @@ use scsi::commands::write10::{Write10Command};
 use scsi::commands::inquiry::{InquiryCommand, InquiryResponse};
 use scsi::commands::testunit::{TestUnitReady};
 use scsi::commands::readcapacity::{ReadCapacityCommand, ReadCapacityResponse};
-use crate::{AumsError, ErrorCause};
+use {AumsError, ErrorCause};
 
 pub struct ScsiBlockDevice<CommType : CommunicationChannel, BuffTypeA : Buffer, BuffTypeB : Buffer, BuffTypeC : Buffer> {
     comm_channel : CommType, 

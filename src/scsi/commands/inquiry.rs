@@ -1,7 +1,7 @@
 
 use scsi::commands::{CommmandBlockWrapper, Command, Direction};
 use traits::{Buffer, BufferPullable, BufferPushable};
-use crate::{AumsError};
+use {AumsError};
 
 
 pub struct InquiryCommand {

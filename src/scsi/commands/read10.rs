@@ -2,7 +2,7 @@
 use scsi::commands::{CommmandBlockWrapper, Command, Direction};
 
 use traits::{Buffer, BufferPushable};
-use crate::{AumsError, ErrorCause};
+use {AumsError, ErrorCause};
 
 pub struct Read10Command {
     wrapper : CommmandBlockWrapper,
