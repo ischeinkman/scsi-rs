@@ -5,15 +5,12 @@ use {AumsError};
 
 
 pub struct InquiryCommand {
-    wrapper : CommmandBlockWrapper,
     allocation_length : u8,
 }
 
 impl InquiryCommand {
     pub fn new(allocation_length : u8) -> InquiryCommand {
-        let wrapper = CommmandBlockWrapper::new(allocation_length as u32, Direction::IN, 0, InquiryCommand::length());
         InquiryCommand {
-            wrapper, 
             allocation_length
         }
     }
@@ -22,7 +19,7 @@ impl InquiryCommand {
 impl BufferPushable for InquiryCommand {
     fn push_to_buffer<B : Buffer>(&self, buffer: &mut B) -> Result<usize, AumsError> {
         let mut rval = 0;
-        rval += self.wrapper.push_to_buffer(buffer)?;
+        rval += self.wrapper().push_to_buffer(buffer)?;
         rval += buffer.push_byte(InquiryCommand::opcode())?;
         rval += buffer.push_byte(0)?;
         rval += buffer.push_byte(0)?;
@@ -34,7 +31,7 @@ impl BufferPushable for InquiryCommand {
 
 impl Command for InquiryCommand {
     fn wrapper(&self) -> CommmandBlockWrapper {
-        self.wrapper
+        CommmandBlockWrapper::new(self.allocation_length as u32, Direction::IN, 0, InquiryCommand::length())
     }
 
     fn opcode() -> u8 {

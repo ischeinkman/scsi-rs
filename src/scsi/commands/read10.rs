@@ -5,10 +5,8 @@ use traits::{Buffer, BufferPushable};
 use {AumsError, ErrorCause};
 
 pub struct Read10Command {
-    wrapper : CommmandBlockWrapper,
     block_address : u32, 
-    _transfer_bytes : u32, 
-    _block_size : u32, 
+    transfer_bytes : u32, 
     transfer_blocks : u16
 }
 
@@ -18,12 +16,9 @@ impl Read10Command {
             return Err(AumsError::from_cause(ErrorCause::InvalidInputError));
         } else {(transfer_bytes / block_size) as u16};
 
-        let wrapper = CommmandBlockWrapper::new(0, Direction::IN, 0, Read10Command::length());
         Ok(Read10Command {
-            wrapper, 
             block_address, 
-            _transfer_bytes : transfer_bytes, 
-            _block_size : block_size,
+            transfer_bytes,
             transfer_blocks, 
         })
     }
@@ -31,7 +26,7 @@ impl Read10Command {
 
 impl BufferPushable for Read10Command {
     fn push_to_buffer<B : Buffer>(&self, buffer: &mut B) -> Result<usize, AumsError> {
-        let mut rval = self.wrapper.push_to_buffer(buffer)?;
+        let mut rval = self.wrapper().push_to_buffer(buffer)?;
         rval += buffer.push_byte(Read10Command::opcode())?;
         rval += buffer.push_byte(0)?;
         rval += buffer.push_u32_be(self.block_address)?;
@@ -49,6 +44,6 @@ impl Command for Read10Command {
     }
 
     fn wrapper(&self) -> CommmandBlockWrapper {
-        self.wrapper
+        CommmandBlockWrapper::new(self.transfer_bytes, Direction::IN, 0, Read10Command::length())
     }
 }

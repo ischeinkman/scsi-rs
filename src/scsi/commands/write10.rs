@@ -6,7 +6,6 @@ use {AumsError, ErrorCause};
 pub struct Write10Command {
     block_address : u32, 
     transfer_bytes : u32, 
-    block_size : u32, 
     transfer_blocks : u16,
 }
 
@@ -19,7 +18,6 @@ impl Write10Command {
         Ok(Write10Command {
             block_address, 
             transfer_bytes, 
-            block_size, 
             transfer_blocks,
         })
     }
@@ -33,7 +31,7 @@ impl Command for Write10Command {
         10
     }
     fn wrapper(&self) -> CommmandBlockWrapper {
-        CommmandBlockWrapper::new(0, Direction::OUT, 0, Write10Command::length())
+        CommmandBlockWrapper::new(self.transfer_bytes, Direction::OUT, 0, Write10Command::length())
     }
 }
 
