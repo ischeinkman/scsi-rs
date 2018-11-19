@@ -40,11 +40,11 @@ impl Command for Write10Command {
 impl BufferPushable for Write10Command {
     fn push_to_buffer<B : Buffer>(&self, buffer: &mut B) -> Result<usize, AumsError> {
         let mut rval = self.wrapper().push_to_buffer(buffer)?;
-        rval += Write10Command::opcode().swap_bytes().push_to_buffer(buffer)?;
+        rval += buffer.push_byte(Write10Command::opcode())?;
         rval += buffer.push_byte(0)?;
-        rval += self.block_address.swap_bytes().push_to_buffer(buffer)?;
+        rval += buffer.push_u32_be(self.block_address)?;
         rval += buffer.push_byte(0)?;
-        rval += self.transfer_blocks.swap_bytes().push_to_buffer(buffer)?;
+        rval += buffer.push_u16_be(self.transfer_blocks)?;
         Ok(rval)
     }
 }

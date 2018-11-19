@@ -1,5 +1,6 @@
 #![no_std]
 
+extern crate byteorder;
 pub mod traits;
 pub mod scsi; 
 

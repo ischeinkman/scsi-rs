@@ -32,10 +32,10 @@ impl Read10Command {
 impl BufferPushable for Read10Command {
     fn push_to_buffer<B : Buffer>(&self, buffer: &mut B) -> Result<usize, AumsError> {
         let mut rval = self.wrapper.push_to_buffer(buffer)?;
-        rval += Read10Command::opcode().to_be().push_to_buffer(buffer)?;
+        rval += buffer.push_byte(Read10Command::opcode())?;
         rval += buffer.push_byte(0)?;
-        rval += self.block_address.to_be().push_to_buffer(buffer)?;
-        rval += self.transfer_blocks.to_be().push_to_buffer(buffer)?;
+        rval += buffer.push_u32_be(self.block_address)?;
+        rval += buffer.push_u16_be(self.transfer_blocks)?;
         Ok(rval)
     }
 }

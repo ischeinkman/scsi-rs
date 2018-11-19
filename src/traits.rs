@@ -1,6 +1,8 @@
 
 use AumsError;
 
+use byteorder::{ByteOrder, BigEndian, LittleEndian};
+
 pub trait Buffer : Sized {
     fn size(&self) -> usize; 
     fn capacity(&self) -> usize; 
@@ -16,14 +18,129 @@ pub trait Buffer : Sized {
     fn reset_read_head(&mut self);
     fn reset_write_head(&mut self);
     fn expand_by(self, bytes : usize) -> Result<Self, AumsError> ;
+
+
+    fn pull_u16_le(&mut self) -> Result<u16, AumsError> {
+        const BYTES : usize = 2;
+        type ED = LittleEndian;
+
+        let mut bytes = [0 ; BYTES];
+        for idx in 0 .. BYTES {
+            bytes[idx] = self.pull_byte()?;
+        }
+        Ok(ED::read_u16(&bytes))
+    }
+    fn pull_u16_be(&mut self) -> Result<u16, AumsError> {
+        const BYTES : usize = 2;
+        type ED = BigEndian;
+
+        let mut bytes = [0 ; BYTES];
+        for idx in 0 .. BYTES {
+            bytes[idx] = self.pull_byte()?;
+        }
+        Ok(ED::read_u16(&bytes))
+    }
+    fn pull_u32_le(&mut self) -> Result<u32, AumsError> {
+        const BYTES : usize = 4;
+        type ED = LittleEndian;
+
+        let mut bytes = [0 ; BYTES];
+        for idx in 0 .. BYTES {
+            bytes[idx] = self.pull_byte()?;
+        }
+        Ok(ED::read_u32(&bytes))
+    }
+    
+    fn pull_u32_be(&mut self) -> Result<u32, AumsError> {
+        const BYTES : usize = 4;
+        type ED = BigEndian;
+
+        let mut bytes = [0 ; BYTES];
+        for idx in 0 .. BYTES {
+            bytes[idx] = self.pull_byte()?;
+        }
+        Ok(ED::read_u32(&bytes))
+    }
+    fn pull_u64_le(&mut self) -> Result<u64, AumsError> {
+        const BYTES : usize = 8;
+        type ED = LittleEndian;
+
+        let mut bytes = [0 ; BYTES];
+        for idx in 0 .. BYTES {
+            bytes[idx] = self.pull_byte()?;
+        }
+        Ok(ED::read_u64(&bytes))
+    }
+    
+    fn pull_u64_be(&mut self) -> Result<u64, AumsError> {
+        const BYTES : usize = 8;
+        type ED = BigEndian;
+
+        let mut bytes = [0 ; BYTES];
+        for idx in 0 .. BYTES {
+            bytes[idx] = self.pull_byte()?;
+        }
+        Ok(ED::read_u64(&bytes))
+    }
+    
+    fn push_u16_le(&mut self, n : u16) -> Result<usize, AumsError> {
+        const BYTES : usize = 2;
+        type ED = LittleEndian;
+
+        let mut bytes = [0 ; BYTES];
+        ED::write_u16(&mut bytes, n);
+        bytes.push_to_buffer(self)?;
+        Ok(BYTES)
+    }
+    fn push_u16_be(&mut self, n : u16) -> Result<usize, AumsError> {
+        const BYTES : usize = 2;
+        type ED = BigEndian;
+
+        let mut bytes = [0 ; BYTES];
+        ED::write_u16(&mut bytes, n);
+        bytes.push_to_buffer(self)?;
+        Ok(BYTES)
+    }
+    fn push_u32_le(&mut self, n : u32) -> Result<usize, AumsError> {
+        const BYTES : usize = 4;
+        type ED = LittleEndian;
+
+        let mut bytes = [0 ; BYTES];
+        ED::write_u32(&mut bytes, n);
+        bytes.push_to_buffer(self)?;
+        Ok(BYTES)
+    }
+    fn push_u32_be(&mut self, n : u32) -> Result<usize, AumsError> {
+        const BYTES : usize = 4;
+        type ED = BigEndian;
+
+        let mut bytes = [0 ; BYTES];
+        ED::write_u32(&mut bytes, n);
+        bytes.push_to_buffer(self)?;
+        Ok(BYTES)
+    }
+    fn push_u64_le(&mut self, n : u64) -> Result<usize, AumsError> {
+        const BYTES : usize = 8;
+        type ED = LittleEndian;
+
+        let mut bytes = [0 ; BYTES];
+        ED::write_u64(&mut bytes, n);
+        bytes.push_to_buffer(self)?;
+        Ok(BYTES)
+    }
+    fn push_u64_be(&mut self, n : u64) -> Result<usize, AumsError> {
+        const BYTES : usize = 8;
+        type ED = BigEndian;
+
+        let mut bytes = [0 ; BYTES];
+        ED::write_u64(&mut bytes, n);
+        bytes.push_to_buffer(self)?;
+        Ok(BYTES)
+    }
 }
 
 pub trait BufferPushable {
     fn push_to_buffer<B : Buffer>(&self, buffer : &mut B) -> Result<usize, AumsError>;
-}
-
-pub trait BufferPullable : Sized{
-    fn pull_from_buffer<B : Buffer>(buffer : &mut B) -> Result<Self, AumsError>;
 }
 
 impl BufferPushable for u8 {
@@ -32,67 +149,29 @@ impl BufferPushable for u8 {
     }
 }
 
-impl BufferPullable for u8 {
-    fn pull_from_buffer<B : Buffer>(buffer : &mut B) -> Result<u8, AumsError> {
-        buffer.pull_byte()
-    }
-}
-
-impl BufferPushable for u16 {
-    fn push_to_buffer<B : Buffer>(&self, buffer : &mut B) -> Result<usize, AumsError> { 
-        let first_byte = ((*self & 0xFF00) >> 8) as u8;
-        let second_byte = (*self & 0x00FF) as u8;
-
-        let rval = buffer.push_byte(first_byte)? + buffer.push_byte(second_byte)?;
+impl <'a, T> BufferPushable for &'a [T] where T : BufferPushable {
+    fn push_to_buffer<B : Buffer>(&self, buffer : &mut B) -> Result<usize, AumsError> {
+        let mut rval = 0;
+        for itm in self.iter() {
+            rval += itm.push_to_buffer(buffer)?;
+        }
         Ok(rval)
     }
 }
 
-impl BufferPullable for u16 {
-    fn pull_from_buffer<B : Buffer>(buffer : &mut B) -> Result<u16, AumsError> {
-        let first_byte = buffer.pull_byte()?;
-        let second_byte = buffer.pull_byte()?;
-        let rval = (first_byte as u16) << 8 | (second_byte as u16);
+impl <T> BufferPushable for [T] where T : BufferPushable {
+    fn push_to_buffer<B : Buffer>(&self, buffer : &mut B) -> Result<usize, AumsError> {
+        let mut rval = 0;
+        for itm in self.iter() {
+            rval += itm.push_to_buffer(buffer)?;
+        }
         Ok(rval)
     }
 }
 
-impl BufferPushable for u32 {
-    fn push_to_buffer<B : Buffer>(&self, buffer : &mut B) -> Result<usize, AumsError> { 
-        let first_half = ((*self & 0xFFFF0000) >> 16) as u16; 
-        let second_half = ((*self & 0x0000FFFF)) as u16;
-        let rval = first_half.push_to_buffer(buffer)? + second_half.push_to_buffer(buffer)?;
-        Ok(rval)
-    }
+pub trait BufferPullable : Sized{
+    fn pull_from_buffer<B : Buffer>(buffer : &mut B) -> Result<Self, AumsError>;
 }
-
-impl BufferPullable for u32 {
-    fn pull_from_buffer<B : Buffer>(buffer : &mut B) -> Result<u32, AumsError> {
-        let first_half = u16::pull_from_buffer(buffer)?;
-        let second_half = u16::pull_from_buffer(buffer)?;
-        let rval = (first_half as u32) << 16 | (second_half as u32);
-        Ok(rval)
-    }
-}
-
-impl BufferPushable for u64 {
-    fn push_to_buffer<B : Buffer>(&self, buffer : &mut B) -> Result<usize, AumsError> { 
-        let first_half = ((*self & 0xFFFFFFFF00000000) >> 32) as u32; 
-        let second_half = ((*self & 0x00000000FFFFFFFF)) as u32;
-        let rval = first_half.push_to_buffer(buffer)? + second_half.push_to_buffer(buffer)?;
-        Ok(rval)
-    }
-}
-
-impl BufferPullable for u64 {
-    fn pull_from_buffer<B : Buffer>(buffer : &mut B) -> Result<u64, AumsError> {
-        let first_half = u32::pull_from_buffer(buffer)?;
-        let second_half = u32::pull_from_buffer(buffer)?;
-        let rval = (first_half as u64) << 32 | (second_half as u64);
-        Ok(rval)
-    }
-}
-
 
 pub trait CommunicationChannel {
     fn out_transfer<B : Buffer>(&mut self, bytes : &B) -> Result<usize, AumsError>;

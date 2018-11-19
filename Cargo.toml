@@ -3,4 +3,6 @@ name = "libaums"
 version = "0.1.0"
 authors = ["ischeinkman <scheinkman.ilan@gmail.com>"]
 
-[dependencies]
+[dependencies.byteorder]
+version = "1.2.7"
+default-features = false

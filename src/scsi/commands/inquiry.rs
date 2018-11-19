@@ -23,7 +23,7 @@ impl BufferPushable for InquiryCommand {
     fn push_to_buffer<B : Buffer>(&self, buffer: &mut B) -> Result<usize, AumsError> {
         let mut rval = 0;
         rval += self.wrapper.push_to_buffer(buffer)?;
-        rval += InquiryCommand::opcode().push_to_buffer(buffer)?;
+        rval += buffer.push_byte(InquiryCommand::opcode())?;
         rval += buffer.push_byte(0)?;
         rval += buffer.push_byte(0)?;
         rval += buffer.push_byte(0)?;

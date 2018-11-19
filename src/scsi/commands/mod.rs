@@ -50,12 +50,13 @@ impl CommmandBlockWrapper {
 impl BufferPushable for CommmandBlockWrapper {
     fn push_to_buffer<B : Buffer>(&self, buffer: &mut B) -> Result<usize, AumsError> {
         let mut rval = 0;
-        rval += D_CBW_SIGNATURE.push_to_buffer(buffer)?;
-        rval += self.tag.push_to_buffer(buffer)?;
-        rval += self.data_transfer_length.push_to_buffer(buffer)?;
-        rval += self.flags.push_to_buffer(buffer)?;
-        rval += self.lun.push_to_buffer(buffer)?;
-        rval += self.cb_length.push_to_buffer(buffer)?;
+        rval += buffer.push_u32_le(D_CBW_SIGNATURE)?;
+        rval += buffer.push_u32_le(self.tag)?;
+        rval += buffer.push_u32_le(self.data_transfer_length)?;
+        
+        rval += buffer.push_byte(self.flags)?;
+        rval += buffer.push_byte(self.lun)?;
+        rval += buffer.push_byte(self.cb_length)?;
         Ok(rval)
     }
 }
@@ -82,13 +83,13 @@ impl CommandStatusWrapper {
 
 impl BufferPullable for CommandStatusWrapper {
     fn pull_from_buffer<B : Buffer>(buffer: &mut B) -> Result<Self, AumsError> {
-        let signature = u32::pull_from_buffer(buffer)?;
+        let signature = buffer.pull_u32_le()?;
         if signature != CommandStatusWrapper::D_CSW_SIGNATURE {
             return Err(AumsError::from_cause(ErrorCause::ParseError));
         }
-        let tag = u32::pull_from_buffer(buffer)?;
-        let _data_residue = u32::pull_from_buffer(buffer)?;
-        let status = u8::pull_from_buffer(buffer)?;
+        let tag = buffer.pull_u32_le()?;
+        let _data_residue = buffer.pull_u32_le()?;
+        let status = buffer.pull_byte()?;
 
         Ok(CommandStatusWrapper{
             tag, 

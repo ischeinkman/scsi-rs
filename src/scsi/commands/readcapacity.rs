@@ -39,8 +39,8 @@ pub struct ReadCapacityResponse {
 
 impl BufferPullable for ReadCapacityResponse {
     fn pull_from_buffer<B : Buffer>(buffer: &mut B) -> Result<ReadCapacityResponse, AumsError> {
-        let lba_bytes = u32::pull_from_buffer(buffer)?.swap_bytes();
-        let len_bytes = u32::pull_from_buffer(buffer)?.swap_bytes();
+        let lba_bytes = buffer.pull_u32_be()?;
+        let len_bytes = buffer.pull_u32_be()?;
         Ok(ReadCapacityResponse {
             logical_block_address : lba_bytes, 
             block_length : len_bytes,
