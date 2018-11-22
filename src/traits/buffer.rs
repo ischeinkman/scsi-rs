@@ -2,14 +2,14 @@ use error::{ErrorCause, ScsiError};
 
 use byteorder::{BigEndian, ByteOrder, LittleEndian};
 
-/// A trait to provide an abstraction over a FIFO byte buffer.
-///  
-/// The buffer is modeled with 2 different indices that operate
-/// independently: one that stores the location of the next byte to be read from,
-/// and one storeing the location of the next byte to write to.
+/// A trait to provide an abstraction over an arbitrary byte buffer.
+///
+/// By using this trait, we can still perform "pseudo-allocations" without
+/// requiring a literal system allocation. Semantically speaking this is a
+/// fixed-size FIFO "queue" of bytes with a variety of helper methods to
+/// work with the buffer itself easily.
 pub trait Buffer: Sized {
-    /// The total number of bytes written to this buffer; in the case of a slice-
-    /// backed buffer, this would be equal to the write index.
+    /// How many bytes are currently stored in the buffer.
     fn size(&self) -> usize;
 
     /// The maximum number of bytes possible to store in this buffer.
@@ -21,42 +21,28 @@ pub trait Buffer: Sized {
         self.size() == 0
     }
 
-    /// Adds a byte to the end of the buffer, incrementing the write index.
-    /// Returns Ok(1) on success.
+    /// Checks whether or not the buffer is full.
+    fn is_full(&self) -> bool {
+        self.capacity() == self.size()
+    }
+
+    /// Pushes a byte to the end of the buffer.
+    ///
+    /// Returns `Ok(1)` on succes.
     fn push_byte(&mut self, byte: u8) -> Result<usize, ScsiError>;
 
-    /// Retrieves a byte from the beginning of the buffer, incrementing the read
-    /// index.
+    /// Retrieves a byte from the beginning of the buffer.
+    ///
     /// Returns Ok(1) on success.
     fn pull_byte(&mut self) -> Result<u8, ScsiError>;
 
-    /// Retrieves a struct from the beginning of the buffer using the struct's
-    /// pull_from_buffer method.
+    /// Retrieves a struct `T` from the beginning of the buffer via
+    /// `T::pull_from_buffer`.
+    ///
     /// Returns the parsed struct.
     fn pull<T: BufferPullable>(&mut self) -> Result<T, ScsiError> {
         T::pull_from_buffer(self)
     }
-
-    /// Resets the read index to the beginning of the buffer.
-    fn reset_read_head(&mut self);
-
-    /// Resets the write index to the beginning of the buffer.
-    fn reset_write_head(&mut self);
-
-    /// Tries to expand the buffer by the given length.
-    /// On success, should return an instance of Self with the following
-    /// facts being true:
-    /// *  The returned buffer's read index and write index are the same as the
-    ///    original buffer's.
-    ///
-    /// *  All bytes from the beginning of the buffer until the byte before the
-    ///    write index match those from the original buffer.
-    ///
-    /// *  The returned buffer's capacity = the original buffer's capacity + bytes
-    ///
-    /// If it is not possible to create a buffer matching these properties, an
-    /// error is returned.
-    fn expand_by(self, bytes: usize) -> Result<Self, ScsiError>;
 
     /// Pulls a `u16` from the beginning of the buffer in Little Endian.
     fn pull_u16_le(&mut self) -> Result<u16, ScsiError> {
@@ -239,17 +225,18 @@ pub trait BufferPullable: Sized {
     fn pull_from_buffer<B: Buffer>(buffer: &mut B) -> Result<Self, ScsiError>;
 }
 
-/// A wrapper struct that implements the `Buffer` trait around a backing `&mut [u8]`.
-pub struct SliceBuffer<'a> {
+/// A struct to wrap a byte-slice-convertable struct into a fixed-size buffer
+/// that wraps its boundaries as necessary.
+pub struct SliceBuffer<T: AsMut<[u8]> + AsRef<[u8]>> {
     read_idx: usize,
     write_idx: usize,
-    inner: &'a mut [u8],
+    inner: T,
 }
 
-impl<'a> SliceBuffer<'a> {
+impl<T: AsMut<[u8]> + AsRef<[u8]>> SliceBuffer<T> {
     /// Wraps a given slice in a buffer with a read index and write index at the
     /// beginning of the slice.
-    pub fn new(slice: &'a mut [u8]) -> SliceBuffer<'a> {
+    pub fn new(slice: T) -> SliceBuffer<T> {
         SliceBuffer {
             read_idx: 0,
             write_idx: 0,
@@ -257,45 +244,43 @@ impl<'a> SliceBuffer<'a> {
         }
     }
 
-    /// Unwraps the buffer, retrieving its backing slice.
-    pub fn into_inner(self) -> &'a mut [u8] {
+    /// Unwraps the buffer, retrieving its backing object.
+    pub fn into_inner(self) -> T {
         self.inner
     }
 }
-impl<'a> Buffer for SliceBuffer<'a> {
+impl<T: AsMut<[u8]> + AsRef<[u8]>> Buffer for SliceBuffer<T> {
     fn size(&self) -> usize {
-        self.write_idx
+        if self.read_idx == self.write_idx {
+            self.inner.as_ref().len()
+        } else if self.write_idx > self.read_idx {
+            self.write_idx - self.read_idx
+        } else {
+            self.inner.as_ref().len() - self.read_idx + self.write_idx
+        }
     }
     fn capacity(&self) -> usize {
-        self.inner.len()
+        self.inner.as_ref().len()
     }
-
+    fn is_full(&self) -> bool {
+        self.write_idx == self.read_idx
+    }
     fn push_byte(&mut self, byte: u8) -> Result<usize, ScsiError> {
-        if self.write_idx >= self.inner.len() {
+        if self.is_full() {
             Err(ScsiError::from_cause(ErrorCause::BufferTooSmallError))
         } else {
-            self.inner[self.write_idx] = byte;
-            self.write_idx += 1;
+            self.inner.as_mut()[self.write_idx] = byte;
+            self.write_idx = (self.write_idx + 1) % self.inner.as_mut().len();
             Ok(1)
         }
     }
     fn pull_byte(&mut self) -> Result<u8, ScsiError> {
-        if self.read_idx >= self.write_idx {
+        if self.is_empty() {
             Err(ScsiError::from_cause(ErrorCause::BufferTooSmallError))
         } else {
-            let bt = self.inner[self.read_idx];
-            self.read_idx += 1;
-            Ok(bt)
+            let byte = self.inner.as_mut()[self.read_idx];
+            self.read_idx = (self.read_idx + 1) % self.inner.as_ref().len();
+            Ok(byte)
         }
-    }
-
-    fn reset_read_head(&mut self) {
-        self.read_idx = 0;
-    }
-    fn reset_write_head(&mut self) {
-        self.write_idx = 0;
-    }
-    fn expand_by(self, _bytes: usize) -> Result<Self, ScsiError> {
-        Err(ScsiError::from_cause(ErrorCause::UnsupportedOperationError))
     }
 }
