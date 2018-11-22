@@ -17,18 +17,18 @@ pub enum ErrorCause {
 
     /// The error was caused because a passed-in byte length was not a multiple
     /// of the previously provided block size.
-    NonBlocksizeMultipleLengthError,
+    NonBlocksizeMultipleLengthError{actual : usize, block_size : usize},
 
     /// The error was caused because we failed to read/write enough bytes to/from
     /// the communication device.
-    UsbTransferError,
+    UsbTransferError{direction : UsbTransferDirection},
 
     /// The error was thrown because a struct's flags were invalid.
     FlagError,
 
     /// The error was thrown becaused we attempted to read/write too many bytes
     /// from/to a buffer.
-    BufferTooSmallError,
+    BufferTooSmallError{expected : usize, actual : usize},
 
     /// The error was thrown because we called a method for a trait that
     /// isn't valid in this particular struct's implementation.
@@ -36,6 +36,12 @@ pub enum ErrorCause {
 
     /// The error was thrown because we tried connecting to a device we don't support.
     InvalidDeviceError,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+pub enum UsbTransferDirection {
+    In, 
+    Out, 
 }
 
 impl ScsiError {

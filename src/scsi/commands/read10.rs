@@ -17,7 +17,7 @@ impl Read10Command {
     ) -> Result<Read10Command, ScsiError> {
         let transfer_blocks = if transfer_bytes % block_size != 0 {
             return Err(ScsiError::from_cause(
-                ErrorCause::NonBlocksizeMultipleLengthError,
+                ErrorCause::NonBlocksizeMultipleLengthError{actual : transfer_bytes as usize, block_size : block_size as usize},
             ));
         } else {
             (transfer_bytes / block_size) as u16

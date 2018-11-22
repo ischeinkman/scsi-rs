@@ -267,7 +267,7 @@ impl<T: AsMut<[u8]> + AsRef<[u8]>> Buffer for SliceBuffer<T> {
     }
     fn push_byte(&mut self, byte: u8) -> Result<usize, ScsiError> {
         if self.is_full() {
-            Err(ScsiError::from_cause(ErrorCause::BufferTooSmallError))
+            Err(ScsiError::from_cause(ErrorCause::BufferTooSmallError {expected : 1, actual : 0}))
         } else {
             self.inner.as_mut()[self.write_idx] = byte;
             self.write_idx = (self.write_idx + 1) % self.inner.as_mut().len();
@@ -276,7 +276,7 @@ impl<T: AsMut<[u8]> + AsRef<[u8]>> Buffer for SliceBuffer<T> {
     }
     fn pull_byte(&mut self) -> Result<u8, ScsiError> {
         if self.is_empty() {
-            Err(ScsiError::from_cause(ErrorCause::BufferTooSmallError))
+            Err(ScsiError::from_cause(ErrorCause::BufferTooSmallError{expected : 1, actual : 0}))
         } else {
             let byte = self.inner.as_mut()[self.read_idx];
             self.read_idx = (self.read_idx + 1) % self.inner.as_ref().len();

@@ -17,7 +17,7 @@ impl Write10Command {
     ) -> Result<Write10Command, ScsiError> {
         if transfer_bytes % block_size != 0 {
             return Err(ScsiError::from_cause(
-                ErrorCause::NonBlocksizeMultipleLengthError,
+                ErrorCause::NonBlocksizeMultipleLengthError{actual : transfer_bytes as usize, block_size : block_size as usize},
             ));
         }
         let transfer_blocks = (transfer_bytes / block_size) as u16;
