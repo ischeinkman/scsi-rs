@@ -119,6 +119,10 @@ impl<CommType: CommunicationChannel, BuffTypeA: Buffer, BuffTypeB: Buffer, BuffT
             &mut self.scratch_buffer,
         ).map(|(r, _)| r)
     }
+
+    pub fn block_size(&self) -> u32 {
+        self.block_size
+    }
 }
 
 fn read_csw<C: CommunicationChannel, B: Buffer>(
