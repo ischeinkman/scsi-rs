@@ -1,6 +1,6 @@
 [package]
 name = "scsi"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["ischeinkman <scheinkman.ilan@gmail.com>"]
 license= "Apache-2.0"
 description = "A `no-std` library for easily interfacing with SCSI-based storage devices."
