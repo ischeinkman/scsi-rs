@@ -12,7 +12,7 @@ use error::ScsiError;
 pub trait CommunicationChannel {
     /// Sends the bytes currently stored in a buffer over the communication channel.
     /// Returns the number of bytes sent.
-    fn out_transfer<B: Buffer>(&mut self, bytes: &B) -> Result<usize, ScsiError>;
+    fn out_transfer<B: Buffer>(&mut self, bytes: &mut B) -> Result<usize, ScsiError>;
 
     /// Reads bytes from the channel up to the point where the buffer is filled.
     /// Returns the number of bytes successfully read.
