@@ -177,6 +177,17 @@ pub trait Buffer: Sized {
         bytes.push_to_buffer(self)?;
         Ok(BYTES)
     }
+
+    /// Clears all bytes from the buffer. 
+    /// Returns the number of bytes pulled.
+    fn clear(&mut self) -> Result<usize, ScsiError> {
+        let mut retval = 0;
+        while !self.is_empty() {
+            let _ = self.pull_byte()?;
+            retval += 1;
+        } 
+        Ok(retval)
+    }
 }
 
 /// A trait to represent a struct that can be pushed to a byte buffer in a constant,

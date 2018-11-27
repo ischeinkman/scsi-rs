@@ -38,9 +38,11 @@ impl<CommType: CommunicationChannel, BuffTypeA: Buffer, BuffTypeB: Buffer, BuffT
         mut out_buffer: BuffTypeB,
         mut scratch_buffer: BuffTypeC,
     ) -> Result<Self, ScsiError> {
-        let remaining = in_buffer.capacity() - in_buffer.size();
+        in_buffer.clear()?;
+        out_buffer.clear()?;
+        scratch_buffer.clear()?;
 
-        let inquiry = InquiryCommand::new(remaining.min(36) as u8);
+        let inquiry = InquiryCommand::new(in_buffer.capacity().min(36) as u8);
         let (_ir, _iw) = transfer_command_raw(
             &mut comm_channel,
             &inquiry,
@@ -54,6 +56,9 @@ impl<CommType: CommunicationChannel, BuffTypeA: Buffer, BuffTypeB: Buffer, BuffT
         }
 
         let test_unit = TestUnitReady::new();
+        in_buffer.clear()?;
+        out_buffer.clear()?;
+        scratch_buffer.clear()?;
         let (_tr, _tw) = transfer_command_raw(
             &mut comm_channel,
             &test_unit,
@@ -63,6 +68,9 @@ impl<CommType: CommunicationChannel, BuffTypeA: Buffer, BuffTypeB: Buffer, BuffT
         )?;
 
         let read_capacity = ReadCapacityCommand::new();
+        in_buffer.clear()?;
+        out_buffer.clear()?;
+        scratch_buffer.clear()?;
         let (_rr, _rw) = transfer_command_raw(
             &mut comm_channel,
             &read_capacity,
@@ -85,6 +93,8 @@ impl<CommType: CommunicationChannel, BuffTypeA: Buffer, BuffTypeB: Buffer, BuffT
     /// Reads bytes starting at `offset` into the provided `dest` buffer, returning
     /// the number of bytes read on success.
     pub fn read<B: Buffer>(&mut self, offset: u32, dest: &mut B) -> Result<usize, ScsiError> {
+        self.out_buffer.clear()?;
+        self.scratch_buffer.clear()?;
         let remaining = dest.capacity() - dest.size();
         if remaining % self.block_size as usize != 0 {
             return Err(ScsiError::from_cause(
@@ -104,6 +114,8 @@ impl<CommType: CommunicationChannel, BuffTypeA: Buffer, BuffTypeB: Buffer, BuffT
     /// Writes bytes starting at `offset` from the provided buffer `src`, returning the
     /// number of bytes written on success.
     pub fn write<B: Buffer>(&mut self, offset: u32, src: &mut B) -> Result<usize, ScsiError> {
+        self.in_buffer.clear()?;
+        self.scratch_buffer.clear()?;
         let remaining = src.capacity() - src.size();
         if remaining % self.block_size as usize != 0 {
             return Err(ScsiError::from_cause(
@@ -129,17 +141,25 @@ fn read_csw<C: CommunicationChannel, B: Buffer>(
     comm_channel: &mut C,
     scratch_buffer: &mut B,
 ) -> Result<CommandStatusWrapper, ScsiError> {
-    if scratch_buffer.capacity() - scratch_buffer.size() < CommandStatusWrapper::SIZE as usize {
-        return Err(ScsiError::from_cause(ErrorCause::BufferTooSmallError{expected : CommandStatusWrapper::SIZE as usize, actual : scratch_buffer.capacity() - scratch_buffer.size()}));
+    if scratch_buffer.capacity()  < CommandStatusWrapper::SIZE as usize {
+        return Err(ScsiError::from_cause(ErrorCause::BufferTooSmallError{expected : CommandStatusWrapper::SIZE as usize, actual : scratch_buffer.capacity() }));
     }
-
+    scratch_buffer.clear()?;
+    let mut padded = 0;
+    while scratch_buffer.capacity() - scratch_buffer.size() != CommandStatusWrapper::SIZE as usize {
+        scratch_buffer.push_byte(0)?;
+        padded += 1;
+    }
     let read_count = comm_channel.in_transfer(scratch_buffer)?;
     if read_count != CommandStatusWrapper::SIZE as usize {
         return Err(ScsiError::from_cause(ErrorCause::UsbTransferError{direction : UsbTransferDirection::In}));
     }
+    for _ in 0..padded {
+        scratch_buffer.pull_byte()?;
+    }
     let retval = CommandStatusWrapper::pull_from_buffer(scratch_buffer)?;
     if retval.status != CommandStatusWrapper::COMMAND_PASSED as u8 {
-        Err(ScsiError::from_cause(ErrorCause::FlagError))
+        Err(ScsiError::from_cause(ErrorCause::FlagError{flags : retval.status as u32}))
     } else {
         Ok(retval)
     }
@@ -150,9 +170,20 @@ fn push_command<C: CommunicationChannel, Cmd: Command, B: Buffer>(
     command: &Cmd,
     scratch_buffer: &mut B,
 ) -> Result<usize, ScsiError> {
-    let serial_bytes = command.push_to_buffer(scratch_buffer)?;
+    // All commands are 31 bytes
+    if scratch_buffer.capacity() < 31 {
+        return Err(ScsiError::from_cause(ErrorCause::BufferTooSmallError{expected : 31, actual : scratch_buffer.capacity()}));
+    }
+    // Clear the scratch buffer
+    scratch_buffer.clear()?;
+    // Push the command's bytes to the buffer
+    let _serial_bytes = command.push_to_buffer(scratch_buffer)?;
+    // Pad it with 0 as nec
+    while scratch_buffer.size() < 31 {
+        scratch_buffer.push_byte(0)?;
+    }
     let pushed_bytes = comm_channel.out_transfer(scratch_buffer)?;
-    if pushed_bytes != serial_bytes {
+    if pushed_bytes != 31 {
         Err(ScsiError::from_cause(ErrorCause::UsbTransferError{direction : UsbTransferDirection::Out}))
     } else {
         Ok(pushed_bytes)
@@ -195,9 +226,10 @@ fn transfer_command_raw<
     } else {
         (0, 0)
     };
+    scratch_buffer.clear()?;
     let csw = read_csw(comm_channel, scratch_buffer)?;
     if csw.tag != command.wrapper().tag {
-        return Err(ScsiError::from_cause(ErrorCause::FlagError));
+        return Err(ScsiError::from_cause(ErrorCause::ParseError));
     }
     Ok((
         read + CommandStatusWrapper::SIZE as usize,

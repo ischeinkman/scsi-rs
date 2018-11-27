@@ -24,7 +24,7 @@ pub enum ErrorCause {
     UsbTransferError{direction : UsbTransferDirection},
 
     /// The error was thrown because a struct's flags were invalid.
-    FlagError,
+    FlagError {flags : u32},
 
     /// The error was thrown becaused we attempted to read/write too many bytes
     /// from/to a buffer.
