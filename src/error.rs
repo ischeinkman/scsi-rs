@@ -2,7 +2,7 @@
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct ScsiError {
     /// The cause of the error.
-    cause: ErrorCause,
+    pub cause: ErrorCause,
 }
 
 ///
