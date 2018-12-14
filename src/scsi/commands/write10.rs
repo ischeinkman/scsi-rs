@@ -11,18 +11,23 @@ pub struct Write10Command {
 
 impl Write10Command {
     pub fn new(
-        block_address: u32,
+        offset: u32,
         transfer_bytes: u32,
         block_size: u32,
     ) -> Result<Write10Command, ScsiError> {
-        if transfer_bytes % block_size != 0 {
+        if transfer_bytes == 0 || transfer_bytes % block_size != 0 {
             return Err(ScsiError::from_cause(
                 ErrorCause::NonBlocksizeMultipleLengthError{actual : transfer_bytes as usize, block_size : block_size as usize},
             ));
         }
         let transfer_blocks = (transfer_bytes / block_size) as u16;
+        if offset % block_size != 0 {
+            return Err(ScsiError::from_cause(
+                ErrorCause::NonBlocksizeMultipleLengthError{actual : offset as usize, block_size : block_size as usize},
+            ));
+        }
         Ok(Write10Command {
-            block_address,
+            block_address : offset / block_size,
             transfer_bytes,
             transfer_blocks,
         })
