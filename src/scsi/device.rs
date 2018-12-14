@@ -21,6 +21,8 @@ pub struct ScsiBlockDevice<
     out_buffer: BuffTypeB,
     scratch_buffer: BuffTypeC,
     block_size: u32,
+
+    pub prev_csw : Option<CommandStatusWrapper>,
 }
 
 impl<CommType: CommunicationChannel, BuffTypeA: Buffer, BuffTypeB: Buffer, BuffTypeC: Buffer>
@@ -43,7 +45,7 @@ impl<CommType: CommunicationChannel, BuffTypeA: Buffer, BuffTypeB: Buffer, BuffT
         scratch_buffer.clear()?;
 
         let inquiry = InquiryCommand::new(in_buffer.capacity().min(36) as u8);
-        let (_ir, _iw) = transfer_command_raw(
+        let (_ir, _iw, _csw_ic) = transfer_command_raw(
             &mut comm_channel,
             &inquiry,
             &mut in_buffer,
@@ -59,7 +61,7 @@ impl<CommType: CommunicationChannel, BuffTypeA: Buffer, BuffTypeB: Buffer, BuffT
         in_buffer.clear()?;
         out_buffer.clear()?;
         scratch_buffer.clear()?;
-        let (_tr, _tw) = transfer_command_raw(
+        let (_tr, _tw, _csw_tur) = transfer_command_raw(
             &mut comm_channel,
             &test_unit,
             &mut in_buffer,
@@ -71,13 +73,14 @@ impl<CommType: CommunicationChannel, BuffTypeA: Buffer, BuffTypeB: Buffer, BuffT
         in_buffer.clear()?;
         out_buffer.clear()?;
         scratch_buffer.clear()?;
-        let (_rr, _rw) = transfer_command_raw(
+        let (_rr, _rw, mut csw_rcc) = transfer_command_raw(
             &mut comm_channel,
             &read_capacity,
             &mut in_buffer,
             &mut out_buffer,
             &mut scratch_buffer,
         )?;
+        csw_rcc.tag = 2;
         let capacity_resp = ReadCapacityResponse::pull_from_buffer(&mut in_buffer)?;
         let block_size = capacity_resp.block_length;
         let rval = ScsiBlockDevice {
@@ -86,6 +89,7 @@ impl<CommType: CommunicationChannel, BuffTypeA: Buffer, BuffTypeB: Buffer, BuffT
             out_buffer,
             scratch_buffer,
             block_size,
+            prev_csw : Some(csw_rcc),
         };
         Ok(rval)
     }
@@ -93,6 +97,11 @@ impl<CommType: CommunicationChannel, BuffTypeA: Buffer, BuffTypeB: Buffer, BuffT
     /// Reads bytes starting at `offset` into the provided `dest` buffer, returning
     /// the number of bytes read on success.
     pub fn read<B: Buffer>(&mut self, offset: u32, dest: &mut B) -> Result<usize, ScsiError> {
+        let prev_tag = match &self.prev_csw {
+            Some(ref c) => c.tag,
+            None => 0
+        };
+        self.prev_csw = None;
         self.out_buffer.clear()?;
         self.scratch_buffer.clear()?;
         let remaining = dest.capacity() - dest.size();
@@ -102,34 +111,45 @@ impl<CommType: CommunicationChannel, BuffTypeA: Buffer, BuffTypeB: Buffer, BuffT
             ));
         }
         let read_command = Read10Command::new(offset, remaining as u32, self.block_size)?;
-        transfer_command_raw(
+        let (r, _, mut csw) = transfer_command_raw(
             &mut self.comm_channel,
             &read_command,
             dest,
             &mut self.out_buffer,
             &mut self.scratch_buffer,
-        ).map(|(r, _)| r)
+        )?;
+        csw.tag = prev_tag + 1;
+        self.prev_csw = Some(csw);
+        Ok(r)
     }
 
     /// Writes bytes starting at `offset` from the provided buffer `src`, returning the
     /// number of bytes written on success.
     pub fn write<B: Buffer>(&mut self, offset: u32, src: &mut B) -> Result<usize, ScsiError> {
+        let prev_tag = match &self.prev_csw {
+            Some(ref c) => c.tag,
+            None => 0
+        };
+        self.prev_csw = None;
         self.in_buffer.clear()?;
         self.scratch_buffer.clear()?;
-        let remaining = src.capacity() - src.size();
-        if remaining % self.block_size as usize != 0 {
+        let to_transfer = src.size();
+        if to_transfer % self.block_size as usize != 0 {
             return Err(ScsiError::from_cause(
-                ErrorCause::NonBlocksizeMultipleLengthError{actual : remaining, block_size : self.block_size as usize},
+                ErrorCause::NonBlocksizeMultipleLengthError{actual : to_transfer, block_size : self.block_size as usize},
             ));
         }
-        let write_command = Write10Command::new(offset, remaining as u32, self.block_size)?;
-        transfer_command_raw(
+        let write_command = Write10Command::new(offset, to_transfer as u32, self.block_size)?;
+        let (_, w, mut csw) = transfer_command_raw(
             &mut self.comm_channel,
             &write_command,
             &mut self.in_buffer,
             src,
             &mut self.scratch_buffer,
-        ).map(|(r, _)| r)
+        )?;
+        csw.tag = prev_tag + 1;
+        self.prev_csw = Some(csw);
+        Ok(w)
     }
 
     pub fn block_size(&self) -> u32 {
@@ -202,8 +222,8 @@ fn transfer_command_raw<
     in_buffer: &mut InBuff,
     out_buffer: &mut OutBuff,
     scratch_buffer: &mut Scratch,
-) -> Result<(usize, usize), ScsiError> {
-    let command_bytes = push_command(comm_channel, command, scratch_buffer)?;
+) -> Result<(usize, usize, CommandStatusWrapper), ScsiError> {
+    let _command_bytes = push_command(comm_channel, command, scratch_buffer)?;
 
     let transfer_length = command.wrapper().data_transfer_length;
     let (read, write) = if transfer_length > 0 {
@@ -232,7 +252,8 @@ fn transfer_command_raw<
         return Err(ScsiError::from_cause(ErrorCause::ParseError));
     }
     Ok((
-        read + CommandStatusWrapper::SIZE as usize,
-        write + command_bytes,
+        read,
+        write,
+        csw
     ))
 }
