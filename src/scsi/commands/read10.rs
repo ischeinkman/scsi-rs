@@ -11,7 +11,7 @@ pub struct Read10Command {
 
 impl Read10Command {
     pub fn new(
-        block_address: u32,
+        offset: u32,
         transfer_bytes: u32,
         block_size: u32,
     ) -> Result<Read10Command, ScsiError> {
@@ -22,9 +22,14 @@ impl Read10Command {
         } else {
             (transfer_bytes / block_size) as u16
         };
+        if offset % block_size != 0 {
+            return Err(ScsiError::from_cause(
+                ErrorCause::NonBlocksizeMultipleLengthError{actual : offset as usize, block_size : block_size as usize},
+            ));
+        }
 
         Ok(Read10Command {
-            block_address,
+            block_address : offset / block_size,
             transfer_bytes,
             transfer_blocks,
         })
