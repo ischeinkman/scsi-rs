@@ -2,6 +2,7 @@ use scsi::commands::{Command, CommandBlockWrapper, Direction};
 use traits::{Buffer, BufferPushable};
 use error::ScsiError;
 
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct RequestSenseCommand {
     allocation_length: u8,
 }

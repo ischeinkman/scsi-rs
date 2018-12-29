@@ -31,6 +31,7 @@ impl BufferPushable for ReadCapacityCommand {
     }
 }
 
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct ReadCapacityResponse {
     pub logical_block_address: u32,
     pub block_length: u32,

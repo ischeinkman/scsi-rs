@@ -2,8 +2,9 @@ use scsi::commands::{Command, CommandBlockWrapper, Direction};
 use traits::{Buffer, BufferPullable, BufferPushable};
 use error::ScsiError;
 
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct InquiryCommand {
-    allocation_length: u8,
+    pub allocation_length: u8,
 }
 
 impl InquiryCommand {
@@ -44,6 +45,7 @@ impl Command for InquiryCommand {
     }
 }
 
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct InquiryResponse {
     pub device_qualifier: u8,
     pub device_type: u8,

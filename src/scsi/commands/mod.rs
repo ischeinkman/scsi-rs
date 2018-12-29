@@ -91,6 +91,7 @@ pub trait Command: BufferPushable {
 
 /// This struct prefaces all responses from the SCSI device when a command
 /// requires a response. 
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct CommandStatusWrapper {
     pub tag: u32,
     pub data_residue: u32,
@@ -99,13 +100,13 @@ pub struct CommandStatusWrapper {
 
 impl CommandStatusWrapper {
     /// The value of the `status` field if the initating command succeeded.
-    pub const COMMAND_PASSED: u32 = 0;
+    pub const COMMAND_PASSED: u8 = 0;
 
     /// The value of the `status` field if the initating command failed.
-    pub const COMMAND_FAILED: u32 = 1;
+    pub const COMMAND_FAILED: u8 = 1;
     /// The value of the `status` field if the initating command encountered a
     /// phace error.
-    pub const PHASE_ERROR: u32 = 2;
+    pub const PHASE_ERROR: u8 = 2;
     /// The size of the Command Status Wrapper, including magic number, in bytes.
     pub const SIZE: u32 = 13;
 

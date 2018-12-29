@@ -3,6 +3,7 @@ use scsi::commands::{Command, CommandBlockWrapper, Direction};
 use traits::{Buffer, BufferPushable};
 use error::{ScsiError, ErrorCause};
 
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct Read10Command {
     block_address: u32,
     transfer_bytes: u32,
@@ -69,7 +70,7 @@ impl Command for Read10Command {
 
 #[cfg(test)]
 mod tests {
-    use super::{Buffer, ScsiError, ErrorCause, Read10Command, BufferPushable, Command, CommandBlockWrapper};
+    use super::{Buffer, ScsiError, ErrorCause, Read10Command, BufferPushable};
     pub struct VecNewtype {
         inner : [u8 ; 512], 
         fake_size : usize, 
@@ -147,7 +148,7 @@ mod tests {
         let mut buff = VecNewtype::new();
         let read_command = Read10Command::new(0x1234, 512, 512).unwrap();
         assert_eq!(read_command.transfer_blocks, 1);
-        let pushed = read_command.push_to_buffer(&mut buff).unwrap();
+        let _pushed = read_command.push_to_buffer(&mut buff).unwrap();
         assert_eq!(&buff.inner[0 .. expected.len() as usize], &expected);
     }
 }
