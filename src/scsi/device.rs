@@ -105,6 +105,9 @@ impl<CommType: CommunicationChannel, BuffTypeA: Buffer, BuffTypeB: Buffer, BuffT
         self.out_buffer.clear()?;
         self.scratch_buffer.clear()?;
         let remaining = dest.capacity() - dest.size();
+        if remaining == 0 {
+            return Ok(0);
+        }
         if remaining % self.block_size as usize != 0 {
             return Err(ScsiError::from_cause(
                 ErrorCause::NonBlocksizeMultipleLengthError{actual : remaining, block_size : self.block_size as usize},
@@ -126,6 +129,9 @@ impl<CommType: CommunicationChannel, BuffTypeA: Buffer, BuffTypeB: Buffer, BuffT
     /// Writes bytes starting at `offset` from the provided buffer `src`, returning the
     /// number of bytes written on success.
     pub fn write<B: Buffer>(&mut self, offset: u32, src: &mut B) -> Result<usize, ScsiError> {
+        if src.is_empty() {
+            return Ok(0);
+        }
         let prev_tag = match &self.prev_csw {
             Some(ref c) => c.tag,
             None => 0
@@ -178,11 +184,7 @@ fn read_csw<C: CommunicationChannel, B: Buffer>(
         scratch_buffer.pull_byte()?;
     }
     let retval = CommandStatusWrapper::pull_from_buffer(scratch_buffer)?;
-    if retval.status != CommandStatusWrapper::COMMAND_PASSED as u8 {
-        Err(ScsiError::from_cause(ErrorCause::FlagError{flags : retval.status as u32}))
-    } else {
-        Ok(retval)
-    }
+    Ok(retval)
 }
 
 fn push_command<C: CommunicationChannel, Cmd: Command, B: Buffer>(
@@ -250,6 +252,9 @@ fn transfer_command_raw<
     let csw = read_csw(comm_channel, scratch_buffer)?;
     if csw.tag != command.wrapper().tag {
         return Err(ScsiError::from_cause(ErrorCause::ParseError));
+    }
+    else if csw.status != CommandStatusWrapper::COMMAND_PASSED {
+        return Err(ScsiError::from_cause(ErrorCause::FlagError { flags : csw.status as u32}))
     }
     Ok((
         read,
