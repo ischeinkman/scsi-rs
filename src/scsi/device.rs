@@ -16,7 +16,7 @@ pub struct ScsiBlockDevice<
     BuffTypeB: Buffer,
     BuffTypeC: Buffer,
 > {
-    comm_channel: CommType,
+    pub comm_channel: CommType,
     in_buffer: BuffTypeA,
     out_buffer: BuffTypeB,
     scratch_buffer: BuffTypeC,
