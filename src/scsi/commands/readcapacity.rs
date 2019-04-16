@@ -1,6 +1,6 @@
 use scsi::commands::{Command, CommandBlockWrapper, Direction};
 use traits::{Buffer, BufferPullable, BufferPushable};
-use error::ScsiError;
+use error::{ScsiError, ErrorCause};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
 pub struct ReadCapacityCommand {}
@@ -31,6 +31,17 @@ impl BufferPushable for ReadCapacityCommand {
     }
 }
 
+impl BufferPullable for ReadCapacityCommand {
+    fn pull_from_buffer<B : Buffer>(buffer: &mut B) -> Result<Self, ScsiError> {
+        let wrapper : CommandBlockWrapper = buffer.pull()?;
+        let opcode = buffer.pull_byte()?;
+        if wrapper.data_transfer_length != 0x8 || wrapper.direction != Direction::IN || wrapper.cb_length != ReadCapacityCommand::length() || opcode != ReadCapacityCommand::opcode() {
+            return Err(ScsiError::from_cause(ErrorCause::ParseError));
+        }
+        Ok(ReadCapacityCommand::new())
+    }
+}
+
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct ReadCapacityResponse {
     pub logical_block_address: u32,
@@ -45,5 +56,14 @@ impl BufferPullable for ReadCapacityResponse {
             logical_block_address: lba_bytes,
             block_length: len_bytes,
         })
+    }
+}
+
+impl BufferPushable for ReadCapacityResponse {
+    fn push_to_buffer<B : Buffer>(&self, buffer: &mut B) -> Result<usize, ScsiError> {
+        let mut rval = 0;
+        rval += buffer.push_u32_be(self.logical_block_address)?;
+        rval += buffer.push_u32_be(self.block_length)?;
+        Ok(rval)
     }
 }

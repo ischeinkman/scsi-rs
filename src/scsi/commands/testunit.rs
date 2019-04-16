@@ -1,6 +1,6 @@
 use scsi::commands::{Command, CommandBlockWrapper, Direction};
-use traits::{Buffer, BufferPushable};
-use error::ScsiError;
+use traits::{Buffer, BufferPushable, BufferPullable};
+use error::{ScsiError, ErrorCause};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
 pub struct TestUnitReady {}
@@ -28,5 +28,19 @@ impl BufferPushable for TestUnitReady {
         let mut rval = self.wrapper().push_to_buffer(buffer)?;
         rval += TestUnitReady::opcode().push_to_buffer(buffer)?;
         Ok(rval)
+    }
+}
+
+impl BufferPullable for TestUnitReady {
+    fn pull_from_buffer<B : Buffer>(buffer: &mut B) -> Result<Self, ScsiError> {
+        let wrapper : CommandBlockWrapper = buffer.pull()?;
+        if wrapper.data_transfer_length != 0 || wrapper.direction != Direction::NONE || wrapper.cb_length != TestUnitReady::length() {
+            return Err(ScsiError::from_cause(ErrorCause::ParseError))
+        }
+        let opcode = buffer.pull_byte()?;
+        if opcode != TestUnitReady::opcode() {
+            return Err(ScsiError::from_cause(ErrorCause::ParseError))
+        }
+        Ok(TestUnitReady::new())
     }
 }

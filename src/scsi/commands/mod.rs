@@ -21,6 +21,24 @@ pub enum Direction {
     NONE,
 }
 
+impl From<u8> for Direction {
+    fn from(flags : u8) -> Direction {
+        match flags & 0x80 {
+            0 => Direction::OUT,
+            _ => Direction::IN,
+        }
+    }
+}
+
+impl From<Direction> for u8 {
+    fn from(dir : Direction) -> u8 {
+        match dir {
+            Direction::IN => 0x80,
+            _ => 0x0,
+        }
+    }
+}
+
 /// A struct that prefaces all commands in the SCSI protocol. 
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct CommandBlockWrapper {
@@ -77,8 +95,33 @@ impl BufferPushable for CommandBlockWrapper {
     }
 }
 
+impl BufferPullable for CommandBlockWrapper {
+    fn pull_from_buffer<B : Buffer>(buffer: &mut B) -> Result<Self, ScsiError> {
+        let magic = buffer.pull_u32_le()?;
+        if magic != CommandBlockWrapper::D_CBW_SIGNATURE {
+            return Err(ScsiError::from_cause(ErrorCause::FlagError{flags : magic}));
+        }
+
+        let tag = buffer.pull_u32_le()?;
+        let data_transfer_length = buffer.pull_u32_le()?;
+
+        let flags = buffer.pull_byte()?;
+        let lun = buffer.pull_byte()?;
+        let cb_length = buffer.pull_byte()?;
+
+        Ok(CommandBlockWrapper {
+            tag,
+            data_transfer_length,
+            flags,
+            lun,
+            cb_length,
+            direction : flags.into(),
+        })
+    }
+}
+
 /// A trait that all SCSI commands must implement.
-pub trait Command: BufferPushable {
+pub trait Command: BufferPushable + BufferPullable {
     /// Returns the command block that prefaces this command struct.
     fn wrapper(&self) -> CommandBlockWrapper;
 
@@ -129,5 +172,16 @@ impl BufferPullable for CommandStatusWrapper {
             data_residue,
             status,
         })
+    }
+}
+
+impl BufferPushable for CommandStatusWrapper {
+    fn push_to_buffer<B : Buffer>(&self, buffer: &mut B) -> Result<usize, ScsiError> {
+        let mut rval = 0;
+        rval += buffer.push_u32_le(CommandStatusWrapper::D_CSW_SIGNATURE)?;
+        rval += buffer.push_u32_le(self.tag)?;
+        rval += buffer.push_u32_le(self.data_residue)?;
+        rval += buffer.push_byte(self.status)?;
+        Ok(rval)
     }
 }

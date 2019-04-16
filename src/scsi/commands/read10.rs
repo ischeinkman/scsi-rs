@@ -1,6 +1,6 @@
 use scsi::commands::{Command, CommandBlockWrapper, Direction};
 
-use traits::{Buffer, BufferPushable};
+use traits::{Buffer, BufferPushable, BufferPullable};
 use error::{ScsiError, ErrorCause};
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
@@ -47,6 +47,29 @@ impl BufferPushable for Read10Command {
         rval += buffer.push_u16_be(self.transfer_blocks)?;
         rval += buffer.push_byte(0)?;
         Ok(rval)
+    }
+}
+
+impl BufferPullable for Read10Command {
+    fn pull_from_buffer<B : Buffer>(buffer: &mut B) -> Result<Self, ScsiError> {
+        let wrapper : CommandBlockWrapper = buffer.pull()?;
+        if wrapper.direction != Direction::IN || wrapper.cb_length != Read10Command::length() {
+            return Err(ScsiError::from_cause(ErrorCause::ParseError));
+        }
+        let opcode = buffer.pull_byte()?;
+        if opcode != Self::opcode() {
+            return Err(ScsiError::from_cause(ErrorCause::ParseError));
+        }
+        let _empty1 = buffer.pull_byte()?;
+        let block_address = buffer.pull_u32_be()?;
+        let _empty2 = buffer.pull_byte()?;
+        let transfer_blocks = buffer.pull_u16_be()?;
+        let _empty3 = buffer.pull_byte()?;
+        Ok(Read10Command {
+            block_address,
+            transfer_blocks,
+            transfer_bytes : wrapper.data_transfer_length,
+        })
     }
 }
 

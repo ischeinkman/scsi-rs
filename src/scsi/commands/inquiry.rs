@@ -1,6 +1,6 @@
 use scsi::commands::{Command, CommandBlockWrapper, Direction};
 use traits::{Buffer, BufferPullable, BufferPushable};
-use error::ScsiError;
+use error::{ScsiError, ErrorCause};
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct InquiryCommand {
@@ -23,6 +23,26 @@ impl BufferPushable for InquiryCommand {
         rval += buffer.push_byte(0)?;
         rval += buffer.push_byte(self.allocation_length)?;
         Ok(rval)
+    }
+}
+
+impl BufferPullable for InquiryCommand {
+    fn pull_from_buffer<B : Buffer>(buffer: &mut B) -> Result<Self, ScsiError> {
+        let header = CommandBlockWrapper::pull_from_buffer(buffer)?;
+        let opcode = buffer.pull_byte()?;
+        if opcode != InquiryCommand::opcode() {
+            return Err(ScsiError::from_cause(ErrorCause::ParseError));
+        }
+        let allocation_length_with_padding = buffer.pull_u32_be()?;
+        let allocation_length = allocation_length_with_padding as u8;
+
+        if !header.data_transfer_length == allocation_length_with_padding || header.direction != Direction::IN || header.cb_length != InquiryCommand::length() {
+            return Err(ScsiError::from_cause(ErrorCause::ParseError));
+        }
+        else {
+            Ok(InquiryCommand::new(allocation_length))
+
+        }
     }
 }
 
@@ -49,7 +69,7 @@ impl Command for InquiryCommand {
 pub struct InquiryResponse {
     pub device_qualifier: u8,
     pub device_type: u8,
-    _is_removeable: bool,
+    _removable_flags: u8,
     _spc_version: u8,
     _response_format: u8,
 }
@@ -59,16 +79,27 @@ impl BufferPullable for InquiryResponse {
         let bt = buffer.pull_byte()?;
         let device_qualifier = bt & 0xe0;
         let device_type = bt & 0x1f;
-        let is_removable_raw = buffer.pull_byte()?;
-        let _is_removeable = is_removable_raw == 0x80;
+        let _removable_flags = buffer.pull_byte()?;
         let _spc_version = buffer.pull_byte()?;
-        let _response_format = buffer.pull_byte()? & 0x7;
+        let _response_format = buffer.pull_byte()?;
         Ok(InquiryResponse {
             device_qualifier,
             device_type,
-            _is_removeable,
+            _removable_flags,
             _spc_version,
             _response_format,
         })
+    }
+}
+
+impl BufferPushable for InquiryResponse {
+    fn push_to_buffer<B : Buffer>(&self, buffer: &mut B) -> Result<usize, ScsiError> {
+        let mut rval = 0;
+        let bt = self.device_qualifier | self.device_type;
+        rval += buffer.push_byte(bt)?;
+        rval += buffer.push_byte(self._removable_flags)?;
+        rval += buffer.push_byte(self._spc_version)?;
+        rval += buffer.push_byte(self._response_format)?;
+        Ok(rval)
     }
 }

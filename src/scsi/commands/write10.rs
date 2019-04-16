@@ -1,5 +1,5 @@
 use scsi::commands::{Command, CommandBlockWrapper, Direction};
-use traits::{Buffer, BufferPushable};
+use traits::{Buffer, BufferPushable, BufferPullable};
 use error::{ScsiError, ErrorCause};
 
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
@@ -60,5 +60,26 @@ impl BufferPushable for Write10Command {
         rval += buffer.push_byte(0)?;
         rval += buffer.push_u16_be(self.transfer_blocks)?;
         Ok(rval)
+    }
+}
+
+impl BufferPullable for Write10Command {
+    fn pull_from_buffer<B : Buffer>(buffer: &mut B) -> Result<Self, ScsiError> {
+        let wrapper : CommandBlockWrapper = buffer.pull()?;
+        if wrapper.direction != Direction::OUT || wrapper.cb_length != Write10Command::length() {
+            return Err(ScsiError::from_cause(ErrorCause::ParseError));
+        }
+        let opcode_with_padding = buffer.pull_u16_le()?;
+        if opcode_with_padding != Write10Command::opcode() as u16 {
+            return Err(ScsiError::from_cause(ErrorCause::ParseError));
+        }
+        let block_address = buffer.pull_u32_be()?;
+        let _padding2 = buffer.pull_byte()?;
+        let transfer_blocks = buffer.pull_u16_be()?;
+        Ok(Write10Command{ 
+            block_address, 
+            transfer_blocks, 
+            transfer_bytes : wrapper.data_transfer_length
+        })
     }
 }
