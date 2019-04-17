@@ -1,8 +1,25 @@
 use scsi::commands::{Command, CommandBlockWrapper, Direction};
 
-use traits::{Buffer, BufferPushable, BufferPullable};
-use error::{ScsiError, ErrorCause};
+use error::{ErrorCause, ScsiError};
+use traits::{Buffer, BufferPullable, BufferPushable};
 
+
+/// A command to read bytes from the block device. 
+/// 
+/// The 10 in Read10 (and Write10) stands for the fact that the command is exactly
+/// 10 bytes long asside from the BlockWrapper: 
+/// 
+/// * 1 byte for the opcode
+/// * 1 byte padding
+/// * 4 bytes for the address of the starting block to read
+/// * 1 more padding byte 
+/// * 2 bytes for the number of blocks to read 
+/// * 1 more padding byte
+/// 
+/// Due to the need for padding by the specification, Read10 (and Write10) can only
+/// deal with a maximum of 65535 blocks per command, which using a standard block size of
+/// 512 bytes is only 32 megabytes. This is why the longer 16-byte family of commands were added, 
+/// but they are not supported by all devices.  
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct Read10Command {
     block_address: u32,
@@ -11,6 +28,16 @@ pub struct Read10Command {
 }
 
 impl Read10Command {
+
+    /// Creates a new Read10 command. 
+    /// 
+    /// Executing the created command will attempt to read `transfer_bytes` bytes starting
+    /// at `offset` bytes from the head of an SCSI device which has a block size of `block_size`. 
+    /// 
+    /// # Errors
+    /// This function returns an error if either `offset` or `transfer_bytes` are 
+    /// not an integer multiple of `block_size`, since SCSI cannot address at lower 
+    /// than block resolution. 
     pub fn new(
         offset: u32,
         transfer_bytes: u32,
@@ -18,19 +45,25 @@ impl Read10Command {
     ) -> Result<Read10Command, ScsiError> {
         let transfer_blocks = if transfer_bytes % block_size != 0 {
             return Err(ScsiError::from_cause(
-                ErrorCause::NonBlocksizeMultipleLengthError{actual : transfer_bytes as usize, block_size : block_size as usize},
+                ErrorCause::NonBlocksizeMultipleLengthError {
+                    actual: transfer_bytes as usize,
+                    block_size: block_size as usize,
+                },
             ));
         } else {
             (transfer_bytes / block_size) as u16
         };
         if offset % block_size != 0 {
             return Err(ScsiError::from_cause(
-                ErrorCause::NonBlocksizeMultipleLengthError{actual : offset as usize, block_size : block_size as usize},
+                ErrorCause::NonBlocksizeMultipleLengthError {
+                    actual: offset as usize,
+                    block_size: block_size as usize,
+                },
             ));
         }
 
         Ok(Read10Command {
-            block_address : offset / block_size,
+            block_address: offset / block_size,
             transfer_bytes,
             transfer_blocks,
         })
@@ -51,8 +84,8 @@ impl BufferPushable for Read10Command {
 }
 
 impl BufferPullable for Read10Command {
-    fn pull_from_buffer<B : Buffer>(buffer: &mut B) -> Result<Self, ScsiError> {
-        let wrapper : CommandBlockWrapper = buffer.pull()?;
+    fn pull_from_buffer<B: Buffer>(buffer: &mut B) -> Result<Self, ScsiError> {
+        let wrapper: CommandBlockWrapper = buffer.pull()?;
         if wrapper.direction != Direction::IN || wrapper.cb_length != Read10Command::length() {
             return Err(ScsiError::from_cause(ErrorCause::ParseError));
         }
@@ -68,7 +101,7 @@ impl BufferPullable for Read10Command {
         Ok(Read10Command {
             block_address,
             transfer_blocks,
-            transfer_bytes : wrapper.data_transfer_length,
+            transfer_bytes: wrapper.data_transfer_length,
         })
     }
 }
@@ -93,85 +126,25 @@ impl Command for Read10Command {
 
 #[cfg(test)]
 mod tests {
-    use super::{Buffer, ScsiError, ErrorCause, Read10Command, BufferPushable};
-    pub struct VecNewtype {
-        inner : [u8 ; 512], 
-        fake_size : usize, 
-        read_idx : usize, 
-        write_idx : usize, 
-    }
-    impl VecNewtype {
-        pub fn new() -> VecNewtype {
-            VecNewtype::with_fake_capacity(512)
-        }
-        pub fn with_fake_capacity(sz : usize) -> VecNewtype {
-            if sz > 512 {
-                panic!("Can only use fake vec with max 512 bytes.");
-            }
-            VecNewtype {
-                inner : [0 ; 512], 
-                fake_size : sz,
-                read_idx : 0, 
-                write_idx : 0,
-            }
-        }
-    }
-    impl Buffer for VecNewtype {
-        fn size(&self) -> usize {
-            if self.write_idx >= self.read_idx {
-                self.write_idx - self.read_idx
-            }
-            else {
-                (self.fake_size + self.write_idx) - self.read_idx
-            }
-        }
-        fn capacity(&self) -> usize {
-            self.fake_size
-        }
-        fn push_byte(&mut self, byte : u8) -> Result<usize, ScsiError> {
-            if self.size() == self.capacity() {
-                Err(ScsiError::from_cause(ErrorCause::BufferTooSmallError{expected : 1, actual : 0}))
-            }
-            else {
-                self.inner[self.write_idx] = byte;
-                self.write_idx = (self.write_idx + 1) % self.fake_size;
-                Ok(1)
-            }
-        }
-        fn pull_byte(&mut self) -> Result<u8, ScsiError> {
-            if self.size() == 0 {
-                Err(ScsiError::from_cause(ErrorCause::BufferTooSmallError{expected : 1, actual : 0}))
-            }
-            else {
-                let bt = self.inner[self.read_idx];
-                self.read_idx = (self.read_idx + 1) % self.fake_size;
-                Ok(bt)
-            }
-        }
-    }   
+    use super::Read10Command;
+    use crate::traits::test::VecNewtype;
+    use crate::{BufferPullable, BufferPushable};
 
     #[test]
-    pub fn test_buffer_push() {
-        let expected : [u8 ; 31] = [
-            0x55, 0x53, 0x42, 0x43, 
-            0x00, 0x00, 0x00, 0x00, 
-            0x00, 0x02, 0x00, 0x00,
-            0x80, 
-            0x00, 
-            0x0a, 
-
-            0x28, 
-            0x00, 
-            0x00, 0x00, 0x12, 0x34, 
-            0x00, 
-            0x00, 0x01,
-
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    pub fn test_read10() {
+        let expected: [u8; 31] = [
+            0x55, 0x53, 0x42, 0x43, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x80, 0x00,
+            0x0a, 0x28, 0x00, 0x00, 0x00, 0x00, 0x8, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00,
         ];
         let mut buff = VecNewtype::new();
-        let read_command = Read10Command::new(0x1234, 512, 512).unwrap();
+        let read_command = Read10Command::new(4096, 512, 512).unwrap();
         assert_eq!(read_command.transfer_blocks, 1);
-        let _pushed = read_command.push_to_buffer(&mut buff).unwrap();
-        assert_eq!(&buff.inner[0 .. expected.len() as usize], &expected);
+        let pushed = read_command.push_to_buffer(&mut buff).unwrap();
+        assert_eq!(pushed, 25);
+        assert_eq!(&buff.inner[0..expected.len() as usize], &expected);
+
+        let pulled = Read10Command::pull_from_buffer(&mut buff).unwrap();
+        assert_eq!(pulled, read_command);
     }
 }

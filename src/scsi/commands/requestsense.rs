@@ -1,6 +1,6 @@
+use error::{ErrorCause, ScsiError};
 use scsi::commands::{Command, CommandBlockWrapper, Direction};
-use traits::{Buffer, BufferPushable, BufferPullable};
-use error::{ScsiError, ErrorCause};
+use traits::{Buffer, BufferPullable, BufferPushable};
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct RequestSenseCommand {
@@ -8,10 +8,8 @@ pub struct RequestSenseCommand {
 }
 
 impl RequestSenseCommand {
-    pub fn new(allocation_length : u8) -> Self {
-        RequestSenseCommand {
-            allocation_length
-        }
+    pub fn new(allocation_length: u8) -> Self {
+        RequestSenseCommand { allocation_length }
     }
 }
 
@@ -40,16 +38,43 @@ impl BufferPushable for RequestSenseCommand {
 }
 
 impl BufferPullable for RequestSenseCommand {
-    fn pull_from_buffer<B : Buffer>(buffer: &mut B) -> Result<Self, ScsiError> {
-        let wrapper : CommandBlockWrapper = buffer.pull()?;
-        if wrapper.data_transfer_length != 0 || wrapper.direction != Direction::NONE || wrapper.cb_length != RequestSenseCommand::length() {
+    fn pull_from_buffer<B: Buffer>(buffer: &mut B) -> Result<Self, ScsiError> {
+        let wrapper: CommandBlockWrapper = buffer.pull()?;
+        if wrapper.data_transfer_length != 0
+            || !(wrapper.direction == Direction::NONE || wrapper.direction == Direction::OUT)
+            || wrapper.cb_length != RequestSenseCommand::length()
+        {
             return Err(ScsiError::from_cause(ErrorCause::ParseError));
         }
         let opcode_with_padding = buffer.pull_u32_le()?;
-        if opcode_with_padding != RequestSenseCommand::opcode() as u32 {
+        if opcode_with_padding != RequestSenseCommand::opcode().into() {
             return Err(ScsiError::from_cause(ErrorCause::ParseError));
         }
         let allocation_length = buffer.pull_byte()?;
         Ok(RequestSenseCommand::new(allocation_length))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RequestSenseCommand;
+    use crate::traits::test::VecNewtype;
+    use crate::{BufferPullable, BufferPushable};
+
+    #[test]
+    pub fn test_requestsense() {
+        let expected: [u8; 31] = [
+            0x55, 0x53, 0x42, 0x43, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0, 0x00,
+            0x06, 0x03, 0x00, 0x00, 0x00, 0x0A, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00,
+        ];
+        let mut buff = VecNewtype::new();
+        let tur_command = RequestSenseCommand::new(0xA);
+        let pushed = tur_command.push_to_buffer(&mut buff).unwrap();
+        assert_eq!(pushed, 20);
+        assert_eq!(&buff.inner[0..pushed], &expected[0 .. pushed]);
+
+        let pulled = RequestSenseCommand::pull_from_buffer(&mut buff).unwrap();
+        assert_eq!(pulled, tur_command);
     }
 }

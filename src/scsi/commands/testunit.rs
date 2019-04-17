@@ -34,7 +34,7 @@ impl BufferPushable for TestUnitReady {
 impl BufferPullable for TestUnitReady {
     fn pull_from_buffer<B : Buffer>(buffer: &mut B) -> Result<Self, ScsiError> {
         let wrapper : CommandBlockWrapper = buffer.pull()?;
-        if wrapper.data_transfer_length != 0 || wrapper.direction != Direction::NONE || wrapper.cb_length != TestUnitReady::length() {
+        if wrapper.data_transfer_length != 0 || !(wrapper.direction == Direction::OUT || wrapper.direction == Direction::NONE)  || wrapper.cb_length != TestUnitReady::length() {
             return Err(ScsiError::from_cause(ErrorCause::ParseError))
         }
         let opcode = buffer.pull_byte()?;
@@ -42,5 +42,29 @@ impl BufferPullable for TestUnitReady {
             return Err(ScsiError::from_cause(ErrorCause::ParseError))
         }
         Ok(TestUnitReady::new())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TestUnitReady;
+    use crate::traits::test::VecNewtype;
+    use crate::{BufferPullable, BufferPushable};
+
+    #[test]
+    pub fn test_tur() {
+        let expected: [u8; 31] = [
+            0x55, 0x53, 0x42, 0x43, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0, 0x00,
+            0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00,
+        ];
+        let mut buff = VecNewtype::new();
+        let tur_command = TestUnitReady::new();
+        let pushed = tur_command.push_to_buffer(&mut buff).unwrap();
+        assert_eq!(pushed, 16);
+        assert_eq!(&buff.inner[0..pushed], &expected[0 .. pushed]);
+
+        let pulled = TestUnitReady::pull_from_buffer(&mut buff).unwrap();
+        assert_eq!(pulled, tur_command);
     }
 }

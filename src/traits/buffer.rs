@@ -295,3 +295,63 @@ impl<T: AsMut<[u8]> + AsRef<[u8]>> Buffer for SliceBuffer<T> {
         }
     }
 }
+
+#[cfg(test)]
+pub mod test {
+    use super::{Buffer, ErrorCause, ScsiError};
+    pub struct VecNewtype {
+        pub inner : [u8 ; 512], 
+        pub fake_size : usize, 
+        pub read_idx : usize, 
+        pub write_idx : usize, 
+    }
+    impl VecNewtype {
+        pub fn new() -> VecNewtype {
+            VecNewtype::with_fake_capacity(512)
+        }
+        pub fn with_fake_capacity(sz : usize) -> VecNewtype {
+            if sz > 512 {
+                panic!("Can only use fake vec with max 512 bytes.");
+            }
+            VecNewtype {
+                inner : [0 ; 512], 
+                fake_size : sz,
+                read_idx : 0, 
+                write_idx : 0,
+            }
+        }
+    }
+    impl Buffer for VecNewtype {
+        fn size(&self) -> usize {
+            if self.write_idx >= self.read_idx {
+                self.write_idx - self.read_idx
+            }
+            else {
+                (self.fake_size + self.write_idx) - self.read_idx
+            }
+        }
+        fn capacity(&self) -> usize {
+            self.fake_size
+        }
+        fn push_byte(&mut self, byte : u8) -> Result<usize, ScsiError> {
+            if self.size() == self.capacity() {
+                Err(ScsiError::from_cause(ErrorCause::BufferTooSmallError{expected : 1, actual : 0}))
+            }
+            else {
+                self.inner[self.write_idx] = byte;
+                self.write_idx = (self.write_idx + 1) % self.fake_size;
+                Ok(1)
+            }
+        }
+        fn pull_byte(&mut self) -> Result<u8, ScsiError> {
+            if self.size() == 0 {
+                Err(ScsiError::from_cause(ErrorCause::BufferTooSmallError{expected : 1, actual : 0}))
+            }
+            else {
+                let bt = self.inner[self.read_idx];
+                self.read_idx = (self.read_idx + 1) % self.fake_size;
+                Ok(bt)
+            }
+        }
+    }   
+}

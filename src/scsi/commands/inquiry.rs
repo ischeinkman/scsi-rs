@@ -37,7 +37,7 @@ impl BufferPullable for InquiryCommand {
         let allocation_length = allocation_length_with_padding as u8;
 
         if !header.data_transfer_length == allocation_length_with_padding || header.direction != Direction::IN || header.cb_length != InquiryCommand::length() {
-            return Err(ScsiError::from_cause(ErrorCause::ParseError));
+            Err(ScsiError::from_cause(ErrorCause::ParseError))
         }
         else {
             Ok(InquiryCommand::new(allocation_length))
@@ -101,5 +101,73 @@ impl BufferPushable for InquiryResponse {
         rval += buffer.push_byte(self._spc_version)?;
         rval += buffer.push_byte(self._response_format)?;
         Ok(rval)
+    }
+}
+#[cfg(test)]
+mod tests {
+    use crate::traits::test::VecNewtype;
+    use crate::{BufferPullable, BufferPushable};
+    use super::{InquiryCommand, InquiryResponse};
+
+    #[test]
+    pub fn test_inquirycommand() {
+        let expected : [u8 ; 31] = [
+            0x55, 0x53, 0x42, 0x43, 
+            0x00, 0x00, 0x00, 0x00, 
+            0x05, 0x00, 0x00, 0x00,
+            0x80, 
+            0x00, 
+            0x06, 
+
+            0x12, 
+            0x00, 0x00, 0x00, 
+            0x05, 
+            0x00, 0x00, 
+            0x00, 0x00,
+
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+        ];
+        let mut buff = VecNewtype::new();
+        let inquiry_command = InquiryCommand::new(0x5);
+        let pushed = inquiry_command.push_to_buffer(&mut buff).unwrap();
+        assert_eq!(pushed, 20);
+        assert_eq!(&buff.inner[0 .. pushed], &expected[0 ..pushed]);
+
+        let pulled = InquiryCommand::pull_from_buffer(&mut buff).unwrap();
+        assert_eq!(pulled, inquiry_command);
+    }
+    #[test]
+    pub fn test_inquiryresponse() {
+        let expected : [u8 ; 31] = [
+            0xab, 0x56, 0x78, 0x9a, 
+            0x00, 0x00, 0x00, 0x00, 
+            0x05, 0x00, 0x00, 0x00,
+            0x80, 
+            0x00, 
+            0x06, 
+
+            0x12, 
+            0x00, 0x00, 0x00, 
+            0x05, 
+            0x00, 0x00, 
+            0x00, 0x00,
+
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+        ];
+        let mut buff = VecNewtype::new();
+        let inquiry_command = InquiryResponse{
+            device_qualifier: 0xa0,
+            device_type: 0x0b,
+            _removable_flags: 0x56,
+            _spc_version: 0x78,
+            _response_format: 0x9a,
+            
+        };
+        let pushed = inquiry_command.push_to_buffer(&mut buff).unwrap();
+        assert_eq!(pushed, 20);
+        assert_eq!(&buff.inner[0 .. pushed], &expected[0 ..pushed]);
+
+        let pulled = InquiryResponse::pull_from_buffer(&mut buff).unwrap();
+        assert_eq!(pulled, inquiry_command);
     }
 }
