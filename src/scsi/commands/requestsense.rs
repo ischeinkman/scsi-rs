@@ -1,6 +1,6 @@
 use error::{ErrorCause, ScsiError};
 use scsi::commands::{Command, CommandBlockWrapper, Direction};
-use traits::{Buffer, BufferPullable, BufferPushable};
+use traits::{ BufferPullable, BufferPushable};
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct RequestSenseCommand {
@@ -26,31 +26,33 @@ impl Command for RequestSenseCommand {
 }
 
 impl BufferPushable for RequestSenseCommand {
-    fn push_to_buffer<B: Buffer>(&self, buffer: &mut B) -> Result<usize, ScsiError> {
-        let mut rval = self.wrapper().push_to_buffer(buffer)?;
-        rval += RequestSenseCommand::opcode().push_to_buffer(buffer)?;
-        rval += buffer.push_byte(0)?;
-        rval += buffer.push_byte(0)?;
-        rval += buffer.push_byte(0)?;
-        rval += self.allocation_length.push_to_buffer(buffer)?;
-        Ok(rval)
+    fn push_to_buffer<B : AsMut<[u8]>>(&self, mut buffer: B) -> Result<usize, ScsiError> {
+        let rval = self.wrapper().push_to_buffer(buffer.as_mut())?;
+        let buffer = &mut buffer.as_mut()[rval ..];
+        buffer[0] = RequestSenseCommand::opcode();
+        buffer[1] = 0;
+        buffer[2] = 0;
+        buffer[3] = 0;
+        buffer[4] = self.allocation_length;
+        Ok(rval + 5)
     }
 }
 
 impl BufferPullable for RequestSenseCommand {
-    fn pull_from_buffer<B: Buffer>(buffer: &mut B) -> Result<Self, ScsiError> {
-        let wrapper: CommandBlockWrapper = buffer.pull()?;
+    fn pull_from_buffer<B : AsRef<[u8]>>(buffer: B) -> Result<Self, ScsiError> {
+        let wrapper: CommandBlockWrapper = CommandBlockWrapper::pull_from_buffer(buffer.as_ref())?;
         if wrapper.data_transfer_length != 0
             || !(wrapper.direction == Direction::NONE || wrapper.direction == Direction::OUT)
             || wrapper.cb_length != RequestSenseCommand::length()
         {
             return Err(ScsiError::from_cause(ErrorCause::ParseError));
         }
-        let opcode_with_padding = buffer.pull_u32_le()?;
-        if opcode_with_padding != RequestSenseCommand::opcode().into() {
+        let buffer = &buffer.as_ref()[15 ..];
+        let opcode = buffer[0];
+        if opcode != RequestSenseCommand::opcode() {
             return Err(ScsiError::from_cause(ErrorCause::ParseError));
         }
-        let allocation_length = buffer.pull_byte()?;
+        let allocation_length = buffer[4];
         Ok(RequestSenseCommand::new(allocation_length))
     }
 }
@@ -58,8 +60,7 @@ impl BufferPullable for RequestSenseCommand {
 #[cfg(test)]
 mod tests {
     use super::RequestSenseCommand;
-    use crate::traits::test::VecNewtype;
-    use crate::{BufferPullable, BufferPushable};
+        use crate::{BufferPullable, BufferPushable};
 
     #[test]
     pub fn test_requestsense() {
@@ -68,11 +69,11 @@ mod tests {
             0x06, 0x03, 0x00, 0x00, 0x00, 0x0A, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00,
         ];
-        let mut buff = VecNewtype::new();
+        let mut buff = [0 ; 32];
         let tur_command = RequestSenseCommand::new(0xA);
         let pushed = tur_command.push_to_buffer(&mut buff).unwrap();
         assert_eq!(pushed, 20);
-        assert_eq!(&buff.inner[0..pushed], &expected[0 .. pushed]);
+        assert_eq!(&buff[0..pushed], &expected[0 .. pushed]);
 
         let pulled = RequestSenseCommand::pull_from_buffer(&mut buff).unwrap();
         assert_eq!(pulled, tur_command);

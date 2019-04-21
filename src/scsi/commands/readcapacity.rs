@@ -1,7 +1,8 @@
 use error::{ErrorCause, ScsiError};
 use scsi::commands::{Command, CommandBlockWrapper, Direction};
-use traits::{Buffer, BufferPullable, BufferPushable};
+use traits::{ BufferPullable, BufferPushable};
 
+use byteorder::{ByteOrder, BE};
 
 /// Command to read capacity information about the block device. 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
@@ -26,17 +27,17 @@ impl Command for ReadCapacityCommand {
 }
 
 impl BufferPushable for ReadCapacityCommand {
-    fn push_to_buffer<B: Buffer>(&self, buffer: &mut B) -> Result<usize, ScsiError> {
-        let mut rval = self.wrapper().push_to_buffer(buffer)?;
-        rval += buffer.push_byte(ReadCapacityCommand::opcode())?;
-        Ok(rval)
+    fn push_to_buffer<B : AsMut<[u8]>>(&self, mut buffer: B) -> Result<usize, ScsiError> {
+        let rval = self.wrapper().push_to_buffer(buffer.as_mut())?;
+        buffer.as_mut()[rval] = ReadCapacityCommand::opcode();
+        Ok(rval + 1)
     }
 }
 
 impl BufferPullable for ReadCapacityCommand {
-    fn pull_from_buffer<B: Buffer>(buffer: &mut B) -> Result<Self, ScsiError> {
-        let wrapper: CommandBlockWrapper = buffer.pull()?;
-        let opcode = buffer.pull_byte()?;
+    fn pull_from_buffer<B : AsRef<[u8]>>(buffer: B) -> Result<Self, ScsiError> {
+        let wrapper: CommandBlockWrapper = CommandBlockWrapper::pull_from_buffer(buffer.as_ref())?;
+        let opcode = buffer.as_ref()[15];
         if wrapper.data_transfer_length != 0x8
             || wrapper.direction != Direction::IN
             || wrapper.cb_length != ReadCapacityCommand::length()
@@ -56,9 +57,10 @@ pub struct ReadCapacityResponse {
 }
 
 impl BufferPullable for ReadCapacityResponse {
-    fn pull_from_buffer<B: Buffer>(buffer: &mut B) -> Result<ReadCapacityResponse, ScsiError> {
-        let lba_bytes = buffer.pull_u32_be()?;
-        let len_bytes = buffer.pull_u32_be()?;
+    fn pull_from_buffer<B : AsRef<[u8]>>(buffer:  B) -> Result<ReadCapacityResponse, ScsiError> {
+        let buffer = buffer.as_ref();
+        let lba_bytes = BE::read_u32(buffer);
+        let len_bytes = BE::read_u32(&buffer[4..]);
         Ok(ReadCapacityResponse {
             logical_block_address: lba_bytes,
             block_length: len_bytes,
@@ -67,19 +69,18 @@ impl BufferPullable for ReadCapacityResponse {
 }
 
 impl BufferPushable for ReadCapacityResponse {
-    fn push_to_buffer<B: Buffer>(&self, buffer: &mut B) -> Result<usize, ScsiError> {
-        let mut rval = 0;
-        rval += buffer.push_u32_be(self.logical_block_address)?;
-        rval += buffer.push_u32_be(self.block_length)?;
-        Ok(rval)
+    fn push_to_buffer<B : AsMut<[u8]>>(&self, mut buffer: B) -> Result<usize, ScsiError> {
+        let buffer = buffer.as_mut();
+        BE::write_u32(&mut buffer[0..], self.logical_block_address);
+        BE::write_u32(&mut buffer[4..], self.block_length);
+        Ok(8)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{ReadCapacityCommand, ReadCapacityResponse};
-    use crate::traits::test::VecNewtype;
-    use crate::{BufferPullable, BufferPushable};
+        use crate::{BufferPullable, BufferPushable};
 
     #[test]
     pub fn test_readcapacitycommand() {
@@ -88,11 +89,11 @@ mod tests {
             0x10, 0x25, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00,
         ];
-        let mut buff = VecNewtype::new();
+        let mut buff = [0 ; 32];
         let read_command = ReadCapacityCommand::new();
         let pushed = read_command.push_to_buffer(&mut buff).unwrap();
         assert_eq!(pushed, 16);
-        assert_eq!(&buff.inner[0..expected.len() as usize], &expected);
+        assert_eq!(&buff[0..expected.len() as usize], &expected);
 
         let pulled = ReadCapacityCommand::pull_from_buffer(&mut buff).unwrap();
         assert_eq!(pulled, read_command);
@@ -103,7 +104,7 @@ mod tests {
             0xab, 0xcd, 0xef, 0x12, 0x23, 0x45, 0x67, 0x89, 0xAA, 0xBB, 0xCC, 0xDD, 0x00, 0x00,
             0x00, 0x00,
         ];
-        let mut buff = VecNewtype::new();
+        let mut buff = [0 ; 32];
         let read_response = ReadCapacityResponse {
             logical_block_address: 0xabcdef12,
             block_length: 0x23456789,
@@ -111,7 +112,7 @@ mod tests {
         let pushed = read_response.push_to_buffer(&mut buff).unwrap();
         assert_eq!(pushed, 8);
         assert_eq!(
-            &buff.inner[0..pushed as usize],
+            &buff[0..pushed as usize],
             &expected[0..pushed as usize]
         );
 

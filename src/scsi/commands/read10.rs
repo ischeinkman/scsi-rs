@@ -1,7 +1,9 @@
 use scsi::commands::{Command, CommandBlockWrapper, Direction};
 
 use error::{ErrorCause, ScsiError};
-use traits::{Buffer, BufferPullable, BufferPushable};
+use traits::{ BufferPullable, BufferPushable};
+
+use byteorder::{ByteOrder, BE};
 
 
 /// A command to read bytes from the block device. 
@@ -71,33 +73,36 @@ impl Read10Command {
 }
 
 impl BufferPushable for Read10Command {
-    fn push_to_buffer<B: Buffer>(&self, buffer: &mut B) -> Result<usize, ScsiError> {
-        let mut rval = self.wrapper().push_to_buffer(buffer)?;
-        rval += buffer.push_byte(Read10Command::opcode())?;
-        rval += buffer.push_byte(0)?;
-        rval += buffer.push_u32_be(self.block_address)?;
-        rval += buffer.push_byte(0)?;
-        rval += buffer.push_u16_be(self.transfer_blocks)?;
-        rval += buffer.push_byte(0)?;
-        Ok(rval)
+    fn push_to_buffer<B : AsMut<[u8]>>(&self, mut buffer: B) -> Result<usize, ScsiError> {
+        let rval = self.wrapper().push_to_buffer(buffer.as_mut())?;
+        let buffer = buffer.as_mut();
+        buffer[rval] = Read10Command::opcode();
+        buffer[rval + 1] = 0;
+        BE::write_u32(&mut buffer[rval + 2..], self.block_address);
+        buffer[rval + 6] = 0;
+        BE::write_u16(&mut buffer[rval + 7 ..], self.transfer_blocks);
+        buffer[rval + 9] = 0;
+        Ok(rval + 10)
     }
 }
 
 impl BufferPullable for Read10Command {
-    fn pull_from_buffer<B: Buffer>(buffer: &mut B) -> Result<Self, ScsiError> {
-        let wrapper: CommandBlockWrapper = buffer.pull()?;
+    fn pull_from_buffer<B : AsRef<[u8]>>(buffer: B) -> Result<Self, ScsiError> {
+        let wrapper: CommandBlockWrapper = CommandBlockWrapper::pull_from_buffer(buffer.as_ref())?;
         if wrapper.direction != Direction::IN || wrapper.cb_length != Read10Command::length() {
             return Err(ScsiError::from_cause(ErrorCause::ParseError));
         }
-        let opcode = buffer.pull_byte()?;
+        let buffer = buffer.as_ref();
+        let opcode = buffer[15];
         if opcode != Self::opcode() {
             return Err(ScsiError::from_cause(ErrorCause::ParseError));
         }
-        let _empty1 = buffer.pull_byte()?;
-        let block_address = buffer.pull_u32_be()?;
-        let _empty2 = buffer.pull_byte()?;
-        let transfer_blocks = buffer.pull_u16_be()?;
-        let _empty3 = buffer.pull_byte()?;
+        let _empty1 = buffer[16];
+        let block_address = BE::read_u32(&buffer[17 ..]);
+        
+        let _empty2 = buffer[21];
+        let transfer_blocks = BE::read_u16(&buffer[22 ..]);
+        let _empty3 = buffer[24];
         Ok(Read10Command {
             block_address,
             transfer_blocks,
@@ -127,8 +132,7 @@ impl Command for Read10Command {
 #[cfg(test)]
 mod tests {
     use super::Read10Command;
-    use crate::traits::test::VecNewtype;
-    use crate::{BufferPullable, BufferPushable};
+        use crate::{BufferPullable, BufferPushable};
 
     #[test]
     pub fn test_read10() {
@@ -137,12 +141,12 @@ mod tests {
             0x0a, 0x28, 0x00, 0x00, 0x00, 0x00, 0x8, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00,
         ];
-        let mut buff = VecNewtype::new();
+        let mut buff = [0 ; 32];
         let read_command = Read10Command::new(4096, 512, 512).unwrap();
         assert_eq!(read_command.transfer_blocks, 1);
         let pushed = read_command.push_to_buffer(&mut buff).unwrap();
         assert_eq!(pushed, 25);
-        assert_eq!(&buff.inner[0..expected.len() as usize], &expected);
+        assert_eq!(&buff[0..expected.len() as usize], &expected);
 
         let pulled = Read10Command::pull_from_buffer(&mut buff).unwrap();
         assert_eq!(pulled, read_command);

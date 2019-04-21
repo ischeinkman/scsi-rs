@@ -1,5 +1,5 @@
 use scsi::commands::{Command, CommandBlockWrapper, Direction};
-use traits::{Buffer, BufferPushable, BufferPullable};
+use traits::{ BufferPushable, BufferPullable};
 use error::{ScsiError, ErrorCause};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
@@ -24,20 +24,21 @@ impl Command for TestUnitReady {
 }
 
 impl BufferPushable for TestUnitReady {
-    fn push_to_buffer<B: Buffer>(&self, buffer: &mut B) -> Result<usize, ScsiError> {
-        let mut rval = self.wrapper().push_to_buffer(buffer)?;
-        rval += TestUnitReady::opcode().push_to_buffer(buffer)?;
-        Ok(rval)
+    fn push_to_buffer<B : AsMut<[u8]>>(&self, mut buffer: B) -> Result<usize, ScsiError> {
+        let rval = self.wrapper().push_to_buffer(buffer.as_mut())?;
+        buffer.as_mut()[rval] = TestUnitReady::opcode();
+        Ok(rval + 1)
     }
 }
 
 impl BufferPullable for TestUnitReady {
-    fn pull_from_buffer<B : Buffer>(buffer: &mut B) -> Result<Self, ScsiError> {
-        let wrapper : CommandBlockWrapper = buffer.pull()?;
+    fn pull_from_buffer<B : AsRef<[u8]>>(buffer: B) -> Result<Self, ScsiError> {
+        let wrapper : CommandBlockWrapper = CommandBlockWrapper::pull_from_buffer(buffer.as_ref())?;
         if wrapper.data_transfer_length != 0 || !(wrapper.direction == Direction::OUT || wrapper.direction == Direction::NONE)  || wrapper.cb_length != TestUnitReady::length() {
             return Err(ScsiError::from_cause(ErrorCause::ParseError))
         }
-        let opcode = buffer.pull_byte()?;
+        let buffer = &buffer.as_ref()[16 ..];
+        let opcode = buffer[0];
         if opcode != TestUnitReady::opcode() {
             return Err(ScsiError::from_cause(ErrorCause::ParseError))
         }
@@ -48,8 +49,7 @@ impl BufferPullable for TestUnitReady {
 #[cfg(test)]
 mod tests {
     use super::TestUnitReady;
-    use crate::traits::test::VecNewtype;
-    use crate::{BufferPullable, BufferPushable};
+        use crate::{BufferPullable, BufferPushable};
 
     #[test]
     pub fn test_tur() {
@@ -58,11 +58,11 @@ mod tests {
             0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00,
         ];
-        let mut buff = VecNewtype::new();
+        let mut buff = [0 ; 32];
         let tur_command = TestUnitReady::new();
         let pushed = tur_command.push_to_buffer(&mut buff).unwrap();
         assert_eq!(pushed, 16);
-        assert_eq!(&buff.inner[0..pushed], &expected[0 .. pushed]);
+        assert_eq!(&buff[0..pushed], &expected[0 .. pushed]);
 
         let pulled = TestUnitReady::pull_from_buffer(&mut buff).unwrap();
         assert_eq!(pulled, tur_command);

@@ -11,8 +11,11 @@ pub use self::testunit::*;
 mod write10;
 pub use self::write10::*;
 
-use traits::{Buffer, BufferPullable, BufferPushable};
+use traits::{ BufferPullable, BufferPushable};
 use error::{ErrorCause, ScsiError};
+
+
+use byteorder::{ByteOrder, LE};
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub enum Direction {
@@ -97,32 +100,34 @@ impl CommandBlockWrapper {
 }
 
 impl BufferPushable for CommandBlockWrapper {
-    fn push_to_buffer<B: Buffer>(&self, buffer: &mut B) -> Result<usize, ScsiError> {
-        let mut rval = 0;
-        rval += buffer.push_u32_le(CommandBlockWrapper::D_CBW_SIGNATURE)?;
-        rval += buffer.push_u32_le(self.tag)?;
-        rval += buffer.push_u32_le(self.data_transfer_length)?;
+    fn push_to_buffer<B : AsMut<[u8]>>(&self, mut buffer: B) -> Result<usize, ScsiError> {
+        let mut buffer = buffer.as_mut();
+        LE::write_u32(&mut buffer, CommandBlockWrapper::D_CBW_SIGNATURE);
+        LE::write_u32(&mut buffer[4..], self.tag);
+        LE::write_u32(&mut buffer[8..], self.data_transfer_length);
 
-        rval += buffer.push_byte(self.flags)?;
-        rval += buffer.push_byte(self.lun)?;
-        rval += buffer.push_byte(self.cb_length)?;
-        Ok(rval)
+        buffer[12] = self.flags;
+        buffer[13] = self.lun;
+        buffer[14] = self.cb_length;
+        Ok(15)
     }
 }
 
 impl BufferPullable for CommandBlockWrapper {
-    fn pull_from_buffer<B : Buffer>(buffer: &mut B) -> Result<Self, ScsiError> {
-        let magic = buffer.pull_u32_le()?;
+    fn pull_from_buffer<B : AsRef<[u8]>>(buffer: B) -> Result<Self, ScsiError> {
+        let buffer = buffer.as_ref();
+        let magic = LE::read_u32(buffer);
+        
         if magic != CommandBlockWrapper::D_CBW_SIGNATURE {
             return Err(ScsiError::from_cause(ErrorCause::FlagError{flags : magic}));
         }
 
-        let tag = buffer.pull_u32_le()?;
-        let data_transfer_length = buffer.pull_u32_le()?;
-
-        let flags = buffer.pull_byte()?;
-        let lun = buffer.pull_byte()?;
-        let cb_length = buffer.pull_byte()?;
+        let tag = LE::read_u32(&buffer[4..]);
+        let data_transfer_length = LE::read_u32(&buffer[8..]);
+        
+        let flags = buffer[12];
+        let lun = buffer[13];
+        let cb_length = buffer[14];
 
         Ok(CommandBlockWrapper {
             tag,
@@ -173,14 +178,15 @@ impl CommandStatusWrapper {
 }
 
 impl BufferPullable for CommandStatusWrapper {
-    fn pull_from_buffer<B: Buffer>(buffer: &mut B) -> Result<Self, ScsiError> {
-        let signature = buffer.pull_u32_le()?;
+    fn pull_from_buffer<B : AsRef<[u8]>>(buffer: B) -> Result<Self, ScsiError> {
+        let buffer = buffer.as_ref();
+        let signature = LE::read_u32(buffer);
         if signature != CommandStatusWrapper::D_CSW_SIGNATURE {
             return Err(ScsiError::from_cause(ErrorCause::ParseError));
         }
-        let tag = buffer.pull_u32_le()?;
-        let data_residue = buffer.pull_u32_le()?;
-        let status = buffer.pull_byte()?;
+        let tag = LE::read_u32(&buffer[4..]);
+        let data_residue = LE::read_u32(&buffer[8..]);
+        let status = buffer[12];
 
         Ok(CommandStatusWrapper {
             tag,
@@ -191,20 +197,19 @@ impl BufferPullable for CommandStatusWrapper {
 }
 
 impl BufferPushable for CommandStatusWrapper {
-    fn push_to_buffer<B : Buffer>(&self, buffer: &mut B) -> Result<usize, ScsiError> {
-        let mut rval = 0;
-        rval += buffer.push_u32_le(CommandStatusWrapper::D_CSW_SIGNATURE)?;
-        rval += buffer.push_u32_le(self.tag)?;
-        rval += buffer.push_u32_le(self.data_residue)?;
-        rval += buffer.push_byte(self.status)?;
-        Ok(rval)
+    fn push_to_buffer<B : AsMut<[u8]>>(&self, mut buffer: B) -> Result<usize, ScsiError> {
+        let buffer = buffer.as_mut();
+        LE::write_u32(buffer, CommandStatusWrapper::D_CSW_SIGNATURE);
+        LE::write_u32(&mut buffer[4..], self.tag);
+        LE::write_u32(&mut buffer[8..], self.data_residue);
+        buffer[12] = self.status;
+        Ok(13)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{CommandBlockWrapper, CommandStatusWrapper, Direction};
-    use crate::traits::test::VecNewtype;
     use crate::{BufferPullable, BufferPushable};
 
     #[test]
@@ -214,11 +219,11 @@ mod tests {
             0x56, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00,
         ];
-        let mut buff = VecNewtype::new();
+        let mut buff = [0 ; 32];
         let cbw = CommandBlockWrapper::new(0xabcdef12, Direction::IN, 0x34, 0x56);
         let pushed = cbw.push_to_buffer(&mut buff).unwrap();
         assert_eq!(pushed, 15);
-        assert_eq!(&buff.inner[0..pushed], &expected[0 .. pushed]);
+        assert_eq!(&buff[0..pushed], &expected[0 .. pushed]);
 
         let pulled = CommandBlockWrapper::pull_from_buffer(&mut buff).unwrap();
         assert_eq!(pulled, cbw);
@@ -230,11 +235,11 @@ mod tests {
             0x56, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00,
         ];
-        let mut buff = VecNewtype::new();
+        let mut buff = [0 ; 32];
         let csw = CommandStatusWrapper{tag : 0x12efcdab, data_residue : 0x90785634, status : 0x80};
         let pushed = csw.push_to_buffer(&mut buff).unwrap();
         assert_eq!(pushed, 13);
-        assert_eq!(&buff.inner[0..pushed], &expected[0 .. pushed]);
+        assert_eq!(&buff[0..pushed], &expected[0 .. pushed]);
 
         let pulled = CommandStatusWrapper::pull_from_buffer(&mut buff).unwrap();
         assert_eq!(pulled, csw);
