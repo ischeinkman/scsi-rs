@@ -154,7 +154,7 @@ pub trait Command: BufferPushable + BufferPullable {
 
 /// This struct prefaces all responses from the SCSI device when a command
 /// requires a response. 
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Default)]
 pub struct CommandStatusWrapper {
     pub tag: u32,
     pub data_residue: u32,

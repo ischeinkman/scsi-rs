@@ -24,9 +24,9 @@ use byteorder::{ByteOrder, BE};
 /// but they are not supported by all devices.  
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct Read10Command {
-    block_address: u32,
-    transfer_bytes: u32,
-    transfer_blocks: u16,
+    pub block_address: u32,
+    pub block_size : u32, 
+    pub transfer_blocks: u16,
 }
 
 impl Read10Command {
@@ -66,7 +66,7 @@ impl Read10Command {
 
         Ok(Read10Command {
             block_address: offset / block_size,
-            transfer_bytes,
+            block_size,
             transfer_blocks,
         })
     }
@@ -106,7 +106,7 @@ impl BufferPullable for Read10Command {
         Ok(Read10Command {
             block_address,
             transfer_blocks,
-            transfer_bytes: wrapper.data_transfer_length,
+            block_size: wrapper.data_transfer_length/ (transfer_blocks as u32),
         })
     }
 }
@@ -121,7 +121,7 @@ impl Command for Read10Command {
 
     fn wrapper(&self) -> CommandBlockWrapper {
         CommandBlockWrapper::new(
-            self.transfer_bytes,
+            (self.transfer_blocks as u32) * self.block_size,
             Direction::IN,
             0,
             Read10Command::length(),

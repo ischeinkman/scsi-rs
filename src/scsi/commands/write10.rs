@@ -22,9 +22,9 @@ use byteorder::{ByteOrder, BE};
 /// but they are not supported by all devices.  
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
 pub struct Write10Command {
-    block_address: u32,
-    transfer_bytes: u32,
-    transfer_blocks: u16,
+    pub block_address: u32,
+    pub block_size: u32,
+    pub transfer_blocks: u16,
 }
 
 impl Write10Command {
@@ -56,7 +56,7 @@ impl Write10Command {
         }
         Ok(Write10Command {
             block_address : offset / block_size,
-            transfer_bytes,
+            block_size,
             transfer_blocks,
         })
     }
@@ -71,7 +71,7 @@ impl Command for Write10Command {
     }
     fn wrapper(&self) -> CommandBlockWrapper {
         CommandBlockWrapper::new(
-            self.transfer_bytes,
+            self.block_size * (self.transfer_blocks as u32),
             Direction::OUT,
             0,
             Write10Command::length(),
@@ -109,7 +109,7 @@ impl BufferPullable for Write10Command {
         Ok(Write10Command{ 
             block_address, 
             transfer_blocks, 
-            transfer_bytes : wrapper.data_transfer_length
+            block_size : wrapper.data_transfer_length/(transfer_blocks as u32)
         })
     }
 }

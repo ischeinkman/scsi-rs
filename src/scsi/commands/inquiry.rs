@@ -68,13 +68,13 @@ impl Command for InquiryCommand {
     }
 }
 
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Default)]
 pub struct InquiryResponse {
     pub device_qualifier: u8,
     pub device_type: u8,
-    _removable_flags: u8,
-    _spc_version: u8,
-    _response_format: u8,
+    pub removable_flags: u8,
+    pub spc_version: u8,
+    pub response_format: u8,
 }
 
 impl BufferPullable for InquiryResponse {
@@ -83,15 +83,15 @@ impl BufferPullable for InquiryResponse {
         let bt =buffer[0];
         let device_qualifier = bt & 0xe0;
         let device_type = bt & 0x1f;
-        let _removable_flags = buffer[1];
-        let _spc_version = buffer[2];
-        let _response_format = buffer[3];
+        let removable_flags = buffer[1];
+        let spc_version = buffer[2];
+        let response_format = buffer[3];
         Ok(InquiryResponse {
             device_qualifier,
             device_type,
-            _removable_flags,
-            _spc_version,
-            _response_format,
+            removable_flags,
+            spc_version,
+            response_format,
         })
     }
 }
@@ -101,9 +101,9 @@ impl BufferPushable for InquiryResponse {
         let buffer = buffer.as_mut();
         let bt = self.device_qualifier | self.device_type;
         buffer[0] = bt;
-        buffer[1] = self._removable_flags;
-        buffer[2] = self._spc_version;
-        buffer[3] = self._response_format;
+        buffer[1] = self.removable_flags;
+        buffer[2] = self.spc_version;
+        buffer[3] = self.response_format;
         Ok(4)
     }
 }
@@ -161,9 +161,9 @@ mod tests {
         let inquiry_command = InquiryResponse{
             device_qualifier: 0xa0,
             device_type: 0x0b,
-            _removable_flags: 0x56,
-            _spc_version: 0x78,
-            _response_format: 0x9a,
+            removable_flags: 0x56,
+            spc_version: 0x78,
+            response_format: 0x9a,
             
         };
         let pushed = inquiry_command.push_to_buffer(&mut buff).unwrap();
