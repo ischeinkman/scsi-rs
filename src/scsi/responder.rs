@@ -8,34 +8,114 @@ use crate::{
     UsbTransferDirection,
 };
 
+
+/// A trait to describe a device to respond to SCSI command, such as a flash drive. 
+/// 
+/// This trait allows for more easily creating new SCSI-speaking devices by mapping 
+/// each command into 1 or 2 type-checking functions and then handling the command-independent
+/// boiler plate in the included `process_command` function. Each function is passed the command
+/// that triggered it, even if that command contains no information (such as TestUnitReady or RequestSense). 
+/// All SCSI sessions end with the device sending a `CommandStatusWrapper` back to the host; therefore, 
+/// nearly all functions here expect the device to construct one to be returned. Usually this will be done
+/// via `Ok(CommandStatsWrapper::default())`, but error situations can be set as necessary as well. 
 pub trait ScsiResponder {
+
+    /// The type to use as a memory buffer for per-block operations, mainly read
+    /// or write transfers. Usually this would be of the form `[u8 ; N]`, where
+    /// `N` is a multiple of 256. 
     type BlockType: AsRef<[u8]> + AsMut<[u8]>;
 
+    /// Called in response to a `ReadCapacityCommand` from the host. 
+    /// 
+    /// Since the command itself doesn't actually carry information, it should 
+    /// generally be ignored. However, it is still passed in just in case. 
     fn read_capacity(
         &mut self,
         command: ReadCapacityCommand,
     ) -> Result<(ReadCapacityResponse, CommandStatusWrapper), ScsiError>;
+
+
+    /// Called in response to a `InquiryCommand` from the host. 
+    /// 
+    /// Currently, the library does not yet include support for `allocation_length`s 
+    /// not equal to 36; in the future more research will be done into which fields
+    /// are added and removed at different values. 
     fn inquiry(
         &mut self,
         command: InquiryCommand,
     ) -> Result<(InquiryResponse, CommandStatusWrapper), ScsiError>;
+
+
+    /// Called in response to a `InquiryCommand` from the host. 
+    /// 
+    /// Currently it is not known what the command's `allocation_length` field does, 
+    /// but it is still passed in to the command regardless.
     fn request_sense(
         &mut self,
         command: RequestSenseCommand,
     ) -> Result<CommandStatusWrapper, ScsiError>;
+
+    /// Called in response to a `TestUnitReady` from the host. 
+    /// 
+    /// All of the response information is encoded in the `CommandStatusWrapper`; 
+    /// a responder that never fails should use `Ok(CommandStatusWrapper::default())`.
     fn test_unit_ready(
         &mut self,
         command: TestUnitReady,
     ) -> Result<CommandStatusWrapper, ScsiError>;
 
+    /// Called when the host sends the `Read10` command itself over the 
+    /// wire. 
+    /// 
+    /// The responder should prepare for the upcoming `read_block` calls; this 
+    /// could involve things like pre-loading the relevant sections into RAM, setting
+    /// up indices, etc.
     fn read10_start(&mut self, command: Read10Command) -> Result<(), ScsiError>;
+
+    /// Called multiple times after a `read10_start` command to pull the relevant data out of the responder. 
+    /// 
+    /// `buffer` will be guranteed to be equal to the block length of the device as specified by the responder's
+    /// `memory_buffer` method; in nearly all cases, it will be the same buffer. The method will keep being called until
+    /// it returns `Some(_)`, even if this leads to a different number of blocks being read than expected by the original
+    /// `Read10Command`; it is up to the responder to gurantee that the number of blocks read is correct. 
     fn read_block(&mut self, buffer: &mut [u8]) -> Result<Option<CommandStatusWrapper>, ScsiError>;
 
+    /// Called when the host sends the `Write10` command itself over the 
+    /// wire. 
+    /// 
+    /// The responder should prepare for the upcoming `write_block` calls; this 
+    /// could involve things like pre-loading the relevant sections into RAM, setting
+    /// up indices, etc.
     fn write10_start(&mut self, command: Write10Command) -> Result<(), ScsiError>;
+    
+    /// Called multiple times after a `write10_start` command to pull the relevant data out of the responder. 
+    /// 
+    /// `buffer` will be guranteed to be equal to the block length of the device as specified by the responder's
+    /// `memory_buffer` method; in nearly all cases, it will be the same buffer. The method will keep being called until
+    /// it returns `Some(_)`, even if this leads to a different number of blocks being written to than expected by the original
+    /// `Write10Command`; it is up to the responder to gurantee that the number of blocks read is correct. 
     fn write_block(&mut self, buffer: &[u8]) -> Result<Option<CommandStatusWrapper>, ScsiError>;
 
+    /// Generates a new, owned instance of the responder's block buffer. 
+    /// 
+    /// Usually, this can be implemented as just `[0 ; N]`, where `N` is the same 
+    /// as the one picked for `Self::BlockType`. 
     fn memory_buffer(&mut self) -> Self::BlockType;
 
+    /// Processes a single command from a host, from reading the CBW to outputting 
+    /// the CSW. 
+    /// 
+    /// First, the CBW and command header is read from `channel` via `in_transfer`; 
+    /// the correct method is then called on `self` based on which opcode was read. 
+    /// Next, if necessary for that particular command (currently, only `Write10`), 
+    /// a new block buffer will be allocated via `self.memory_buffer()` and any needed input blocks 
+    /// will be pulled from `channel` and routed to the relevant method on `self`. 
+    /// Next, if necessary for that particular command (currently, only `Read10`), 
+    /// a new block buffer will be allocated via `self.memory_buffer()` and any needed ouput blocks 
+    /// will be pulled from the relevant method on `self` and pushed to `channel`. 
+    /// Next, if the command has an extra specialized response struct, it will be sent via `channel.out_transfer`
+    /// using a 31-length buffer. 
+    /// Finally, the CSW struct's tag is set to match the input CBW's and it is sent across the channel using a 31-length buffer. 
     fn process_command<C: CommunicationChannel>(
         &mut self,
         channel: &mut C,
@@ -88,11 +168,17 @@ pub trait ScsiResponder {
                     }
                 }
             }
-            _ => unimplemented!(),
+            //_ => unimplemented!()
         };
         csw.tag = cbw.tag;
         let csw_pushed = csw.push_to_buffer(&mut command_buffer)?;
+        if csw_pushed != 13 {
+            return Err(ScsiError::from_cause(ErrorCause::BufferTooSmallError{expected : 13, actual : csw_pushed}));
+        }
         let csw_sent = channel.out_transfer(&command_buffer)?;
+        if csw_sent != 31 {
+            return Err(ScsiError::from_cause(ErrorCause::BufferTooSmallError{expected : 31, actual : csw_sent}));
+        }
         Ok(())
     }
 }
@@ -159,7 +245,7 @@ mod tests {
         ScsiError, ScsiResponder, ErrorCause,
         ReadCapacityCommand, ReadCapacityResponse, RequestSenseCommand, Read10Command,
         InquiryCommand, InquiryResponse, TestUnitReady, Write10Command, 
-        CommandBlockWrapper, CommandStatusWrapper,
+        CommandStatusWrapper,
         CommunicationChannel,
     };
     use traits::{BufferPullable, BufferPushable};
