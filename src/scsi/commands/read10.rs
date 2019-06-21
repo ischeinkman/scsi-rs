@@ -106,7 +106,7 @@ impl BufferPullable for Read10Command {
         Ok(Read10Command {
             block_address,
             transfer_blocks,
-            block_size: wrapper.data_transfer_length/ (transfer_blocks as u32),
+            block_size: wrapper.data_transfer_length/ u32::from(transfer_blocks),
         })
     }
 }
@@ -121,7 +121,7 @@ impl Command for Read10Command {
 
     fn wrapper(&self) -> CommandBlockWrapper {
         CommandBlockWrapper::new(
-            (self.transfer_blocks as u32) * self.block_size,
+            u32::from(self.transfer_blocks) * self.block_size,
             Direction::IN,
             0,
             Read10Command::length(),

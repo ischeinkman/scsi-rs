@@ -71,7 +71,7 @@ impl Command for Write10Command {
     }
     fn wrapper(&self) -> CommandBlockWrapper {
         CommandBlockWrapper::new(
-            self.block_size * (self.transfer_blocks as u32),
+            self.block_size * u32::from(self.transfer_blocks),
             Direction::OUT,
             0,
             Write10Command::length(),
@@ -109,7 +109,7 @@ impl BufferPullable for Write10Command {
         Ok(Write10Command{ 
             block_address, 
             transfer_blocks, 
-            block_size : wrapper.data_transfer_length/(transfer_blocks as u32)
+            block_size : wrapper.data_transfer_length/u32::from(transfer_blocks)
         })
     }
 }

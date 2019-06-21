@@ -393,8 +393,8 @@ mod tests {
             let buflen = rcv_lock.len();
             let mut read = 0;
             {
-            let mut iter = rcv_lock.drain(..slice.len().min(buflen));
-            while let Some(itm) = iter.next() {
+            let iter = rcv_lock.drain(..slice.len().min(buflen));
+            for itm in iter {
                 slice[read] = itm; 
                 read += 1;
             }

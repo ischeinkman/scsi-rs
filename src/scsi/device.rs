@@ -64,7 +64,7 @@ impl<CommType: CommunicationChannel> ScsiBlockDevice<CommType> {
             None => 0,
         };
         self.prev_csw = None;
-        if buffer.len() == 0 {
+        if buffer.is_empty() {
             return Ok(0);
         }
         if buffer.len() % self.block_size as usize != 0 {
@@ -86,7 +86,7 @@ impl<CommType: CommunicationChannel> ScsiBlockDevice<CommType> {
     /// number of bytes written on success.
     pub fn write<B: AsMut<[u8]>>(&mut self, offset: u32, mut src: B) -> Result<usize, ScsiError> {
         let buffer = src.as_mut();
-        if buffer.len() == 0 {
+        if buffer.is_empty() {
             return Ok(0);
         }
         let prev_tag = match &self.prev_csw {
@@ -170,7 +170,7 @@ fn transfer_out_command<Usb: CommunicationChannel, C: Command, OutBuff: AsRef<[u
         Err(ScsiError::from_cause(ErrorCause::ParseError))
     } else if csw.status != CommandStatusWrapper::COMMAND_PASSED {
         Err(ScsiError::from_cause(ErrorCause::FlagError {
-            flags: csw.status as u32,
+            flags: u32::from(csw.status),
         }))
     } else {
         Ok((write, csw))
@@ -201,7 +201,7 @@ fn transfer_in_command<Usb: CommunicationChannel, C: Command, InBuff: AsMut<[u8]
         return Err(ScsiError::from_cause(ErrorCause::ParseError));
     } else if csw.status != CommandStatusWrapper::COMMAND_PASSED {
         return Err(ScsiError::from_cause(ErrorCause::FlagError {
-            flags: csw.status as u32,
+            flags: u32::from(csw.status),
         }));
     }
     Ok((read, csw))

@@ -106,8 +106,8 @@ mod tests {
         ];
         let mut buff = [0 ; 32];
         let read_response = ReadCapacityResponse {
-            logical_block_address: 0xabcdef12,
-            block_length: 0x23456789,
+            logical_block_address: 0xabcd_ef12,
+            block_length: 0x2345_6789,
         };
         let pushed = read_response.push_to_buffer(&mut buff).unwrap();
         assert_eq!(pushed, 8);

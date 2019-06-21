@@ -220,7 +220,7 @@ mod tests {
             0x00, 0x00, 0x00,
         ];
         let mut buff = [0 ; 32];
-        let cbw = CommandBlockWrapper::new(0xabcdef12, Direction::IN, 0x34, 0x56);
+        let cbw = CommandBlockWrapper::new(0xabcd_ef12, Direction::IN, 0x34, 0x56);
         let pushed = cbw.push_to_buffer(&mut buff).unwrap();
         assert_eq!(pushed, 15);
         assert_eq!(&buff[0..pushed], &expected[0 .. pushed]);
@@ -236,7 +236,7 @@ mod tests {
             0x00, 0x00, 0x00,
         ];
         let mut buff = [0 ; 32];
-        let csw = CommandStatusWrapper{tag : 0x12efcdab, data_residue : 0x90785634, status : 0x80};
+        let csw = CommandStatusWrapper{tag : 0x12ef_cdab, data_residue :0x9078_5634, status : 0x80};
         let pushed = csw.push_to_buffer(&mut buff).unwrap();
         assert_eq!(pushed, 13);
         assert_eq!(&buff[0..pushed], &expected[0 .. pushed]);
