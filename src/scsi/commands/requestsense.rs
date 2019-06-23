@@ -20,6 +20,14 @@ impl RequestSenseCommand {
     }
 }
 
+impl Default for RequestSenseCommand {
+    fn default() -> Self {
+        // According to the spec teh default is 252 so all of the sense information
+        // can be returned in a single transfer. 
+        RequestSenseCommand::new(252)
+    }
+}
+
 impl Command for RequestSenseCommand {
     fn opcode() -> u8 {
         0x3
@@ -28,7 +36,7 @@ impl Command for RequestSenseCommand {
         0x6
     }
     fn wrapper(&self) -> CommandBlockWrapper {
-        CommandBlockWrapper::new(0, Direction::NONE, 0, RequestSenseCommand::length())
+        CommandBlockWrapper::new(u32::from(self.allocation_length), Direction::IN, 0, RequestSenseCommand::length())
     }
 }
 
