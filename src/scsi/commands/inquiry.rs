@@ -13,6 +13,12 @@ pub struct InquiryCommand {
     pub allocation_length: u8,
 }
 
+impl Default for InquiryCommand {
+    fn default() -> Self {
+        InquiryCommand::new(36)
+    }
+}
+
 impl InquiryCommand {
     /// Constructs a new `InquiryCommand` with the given value for
     /// `allocation_length`.
