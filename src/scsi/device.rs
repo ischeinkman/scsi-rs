@@ -174,10 +174,15 @@ fn transfer_out_command<Usb: CommunicationChannel, C: Command, OutBuff: AsRef<[u
         0
     } else if command.wrapper().direction == Direction::IN {
         return Err(ScsiError::from_cause(ErrorCause::UnsupportedOperationError));
+    } else if out_buffer.as_ref().len() < transfer_length as usize {
+        return Err(ScsiError::from_cause(ErrorCause::BufferTooSmallError {
+            expected: transfer_length as usize,
+            actual: out_buffer.as_ref().len(),
+        }));
     } else {
         let mut written = comm_channel.out_transfer(out_buffer.as_ref())?;
         while written < transfer_length as usize {
-            written += comm_channel.out_transfer(out_buffer.as_ref())?;
+            written += comm_channel.out_transfer(&out_buffer.as_ref()[written..])?;
         }
         written
     };
@@ -205,10 +210,15 @@ fn transfer_in_command<Usb: CommunicationChannel, C: Command, InBuff: AsMut<[u8]
         0
     } else if command.wrapper().direction == Direction::OUT {
         return Err(ScsiError::from_cause(ErrorCause::UnsupportedOperationError));
+    } else if in_buffer.as_mut().len() < transfer_length as usize {
+        return Err(ScsiError::from_cause(ErrorCause::BufferTooSmallError {
+            expected: transfer_length as usize,
+            actual: in_buffer.as_mut().len(),
+        }));
     } else {
         let mut read = comm_channel.in_transfer(in_buffer.as_mut())?;
         while read < transfer_length as usize {
-            read += comm_channel.in_transfer(in_buffer.as_mut())?;
+            read += comm_channel.in_transfer(&mut in_buffer.as_mut()[read..])?;
         }
         read
     };
