@@ -11,8 +11,23 @@ use traits::{BufferPullable, CommunicationChannel};
 /// This allows for reading and writing to the device at static offests, allowing for
 /// easy interaction with any file system crate.
 pub struct ScsiBlockDevice<CommType: CommunicationChannel> {
+    /// The raw communication channel this device is using.
+    ///
+    /// This is a public field to allow for the user to still manipulate the
+    /// backing device as necessary; however, this pattern is not generally
+    /// recommended nor required in a standard use case.
     pub comm_channel: CommType,
     block_size: u32,
+
+    /// The `CommandStatusWrapper` returned from the SCSI device after the last
+    /// method ran. This can be used to check for error sitations or other
+    /// general status information.
+    ///
+    /// This can be `None` if either the device is in the middle of a command
+    /// (though currently this can only happen in a multi-threaded context),
+    /// or if the previous action the user attempted short-circuited before
+    /// the command itself was actually passed to the SCSI reponder (eg, if
+    /// the user attempted to call a `read` or `write` with an empty buffer).
     pub prev_csw: Option<CommandStatusWrapper>,
 }
 
@@ -110,6 +125,7 @@ impl<CommType: CommunicationChannel> ScsiBlockDevice<CommType> {
         Ok(w)
     }
 
+    /// The size of the read/write blocks for this device.
     pub fn block_size(&self) -> u32 {
         self.block_size
     }

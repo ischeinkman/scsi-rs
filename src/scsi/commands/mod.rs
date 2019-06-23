@@ -11,21 +11,29 @@ pub use self::testunit::*;
 mod write10;
 pub use self::write10::*;
 
-use traits::{ BufferPullable, BufferPushable};
 use error::{ErrorCause, ScsiError};
-
+use traits::{BufferPullable, BufferPushable};
 
 use byteorder::{ByteOrder, LE};
 
+/// The direction of the data transfer required for an SCSI command.
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub enum Direction {
+    /// Extra data must be transfered *from* the SCSI responder *to* the SCSI
+    /// host as part of the command.  
     IN,
+
+    /// Extra data must be transfered *to* the SCSI responder *from* the SCSI
+    /// host as part of the command.  
     OUT,
+
+    /// This command requires no separate data transfer phase; all information
+    /// is encoded in the command itself and the returned `CommandStatusWrapper`.
     NONE,
 }
 
 impl From<u8> for Direction {
-    fn from(flags : u8) -> Direction {
+    fn from(flags: u8) -> Direction {
         match flags & 0x80 {
             0 => Direction::OUT,
             _ => Direction::IN,
@@ -34,7 +42,7 @@ impl From<u8> for Direction {
 }
 
 impl From<Direction> for u8 {
-    fn from(dir : Direction) -> u8 {
+    fn from(dir: Direction) -> u8 {
         match dir {
             Direction::IN => 0x80,
             _ => 0x0,
@@ -42,14 +50,13 @@ impl From<Direction> for u8 {
     }
 }
 
-/// A struct that prefaces all commands in the SCSI protocol. 
+/// A struct that prefaces all commands in the SCSI protocol.
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct CommandBlockWrapper {
-
     /// The identifier of the command this CBW is wrapping
     pub tag: u32,
 
-    /// How much non-command data needs to be transfered for this command 
+    /// How much non-command data needs to be transfered for this command
     /// (eg data being read for a Read10, data being written for a Write10, etc)
     pub data_transfer_length: u32,
 
@@ -61,10 +68,10 @@ pub struct CommandBlockWrapper {
     /// TODO: What is this?
     pub lun: u8,
 
-    /// The length of the command parameters to be executed, not counting external data to be transfered. 
+    /// The length of the command parameters to be executed, not counting external data to be transfered.
     pub cb_length: u8,
 
-    /// The direction data will be flowing in, either IN for device -> host, OUT for host -> device, 
+    /// The direction data will be flowing in, either IN for device -> host, OUT for host -> device,
     /// and NONE if the command has no associated data transfer.
     pub direction: Direction,
 }
@@ -100,7 +107,7 @@ impl CommandBlockWrapper {
 }
 
 impl BufferPushable for CommandBlockWrapper {
-    fn push_to_buffer<B : AsMut<[u8]>>(&self, mut buffer: B) -> Result<usize, ScsiError> {
+    fn push_to_buffer<B: AsMut<[u8]>>(&self, mut buffer: B) -> Result<usize, ScsiError> {
         let mut buffer = buffer.as_mut();
         LE::write_u32(&mut buffer, CommandBlockWrapper::D_CBW_SIGNATURE);
         LE::write_u32(&mut buffer[4..], self.tag);
@@ -114,17 +121,19 @@ impl BufferPushable for CommandBlockWrapper {
 }
 
 impl BufferPullable for CommandBlockWrapper {
-    fn pull_from_buffer<B : AsRef<[u8]>>(buffer: B) -> Result<Self, ScsiError> {
+    fn pull_from_buffer<B: AsRef<[u8]>>(buffer: B) -> Result<Self, ScsiError> {
         let buffer = buffer.as_ref();
         let magic = LE::read_u32(buffer);
-        
+
         if magic != CommandBlockWrapper::D_CBW_SIGNATURE {
-            return Err(ScsiError::from_cause(ErrorCause::FlagError{flags : magic}));
+            return Err(ScsiError::from_cause(ErrorCause::FlagError {
+                flags: magic,
+            }));
         }
 
         let tag = LE::read_u32(&buffer[4..]);
         let data_transfer_length = LE::read_u32(&buffer[8..]);
-        
+
         let flags = buffer[12];
         let lun = buffer[13];
         let cb_length = buffer[14];
@@ -135,7 +144,7 @@ impl BufferPullable for CommandBlockWrapper {
             flags,
             lun,
             cb_length,
-            direction : flags.into(),
+            direction: flags.into(),
         })
     }
 }
@@ -153,11 +162,21 @@ pub trait Command: BufferPushable + BufferPullable {
 }
 
 /// This struct prefaces all responses from the SCSI device when a command
-/// requires a response. 
+/// requires a response.
 #[derive(Clone, Copy, Eq, PartialEq, Debug, Default)]
 pub struct CommandStatusWrapper {
+    /// The value of the `tag` field of the `CommandBlockWrapper` this CSW
+    /// corresponds to.
     pub tag: u32,
+
+    /// Difference between CBW length and actual length.
     pub data_residue: u32,
+
+    /// The status value returned after the command was ran; any value other
+    /// than 0 indicates an error.
+    ///
+    /// See `COMMAND_PASSED`, `COMMAND_FAILED`, and `PHASE_ERROR` for some
+    /// known values this field can take.
     pub status: u8,
 }
 
@@ -178,7 +197,7 @@ impl CommandStatusWrapper {
 }
 
 impl BufferPullable for CommandStatusWrapper {
-    fn pull_from_buffer<B : AsRef<[u8]>>(buffer: B) -> Result<Self, ScsiError> {
+    fn pull_from_buffer<B: AsRef<[u8]>>(buffer: B) -> Result<Self, ScsiError> {
         let buffer = buffer.as_ref();
         let signature = LE::read_u32(buffer);
         if signature != CommandStatusWrapper::D_CSW_SIGNATURE {
@@ -197,7 +216,7 @@ impl BufferPullable for CommandStatusWrapper {
 }
 
 impl BufferPushable for CommandStatusWrapper {
-    fn push_to_buffer<B : AsMut<[u8]>>(&self, mut buffer: B) -> Result<usize, ScsiError> {
+    fn push_to_buffer<B: AsMut<[u8]>>(&self, mut buffer: B) -> Result<usize, ScsiError> {
         let buffer = buffer.as_mut();
         LE::write_u32(buffer, CommandStatusWrapper::D_CSW_SIGNATURE);
         LE::write_u32(&mut buffer[4..], self.tag);
@@ -219,11 +238,11 @@ mod tests {
             0x56, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00,
         ];
-        let mut buff = [0 ; 32];
+        let mut buff = [0; 32];
         let cbw = CommandBlockWrapper::new(0xabcd_ef12, Direction::IN, 0x34, 0x56);
         let pushed = cbw.push_to_buffer(&mut buff).unwrap();
         assert_eq!(pushed, 15);
-        assert_eq!(&buff[0..pushed], &expected[0 .. pushed]);
+        assert_eq!(&buff[0..pushed], &expected[0..pushed]);
 
         let pulled = CommandBlockWrapper::pull_from_buffer(&mut buff).unwrap();
         assert_eq!(pulled, cbw);
@@ -235,11 +254,15 @@ mod tests {
             0x56, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00,
         ];
-        let mut buff = [0 ; 32];
-        let csw = CommandStatusWrapper{tag : 0x12ef_cdab, data_residue :0x9078_5634, status : 0x80};
+        let mut buff = [0; 32];
+        let csw = CommandStatusWrapper {
+            tag: 0x12ef_cdab,
+            data_residue: 0x9078_5634,
+            status: 0x80,
+        };
         let pushed = csw.push_to_buffer(&mut buff).unwrap();
         assert_eq!(pushed, 13);
-        assert_eq!(&buff[0..pushed], &expected[0 .. pushed]);
+        assert_eq!(&buff[0..pushed], &expected[0..pushed]);
 
         let pulled = CommandStatusWrapper::pull_from_buffer(&mut buff).unwrap();
         assert_eq!(pulled, csw);

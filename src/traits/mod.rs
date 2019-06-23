@@ -12,10 +12,28 @@ pub trait CommunicationChannel {
     fn in_transfer<B: AsMut<[u8]>>(&mut self, buffer: B) -> Result<usize, ScsiError>;
 }
 
+/// Allows a struct to serialize itself to a raw byte buffer.
 pub trait BufferPushable {
-    fn push_to_buffer<T : AsMut<[u8]>>(&self, buffer : T) -> Result<usize, ScsiError>; 
+    /// Serializes `self` to a raw byte slice.
+    ///
+    /// Returns the number of bytes written on succes.
+    ///
+    /// #Errors
+    ///
+    /// Can return a `BufferTooSmall` error when the length of `buffer` is not
+    /// large enough to serialize to.
+    fn push_to_buffer<T: AsMut<[u8]>>(&self, buffer: T) -> Result<usize, ScsiError>;
 }
 
-pub trait BufferPullable : Sized {
-    fn pull_from_buffer<T : AsRef<[u8]>>(buffer : T) -> Result<Self, ScsiError>;
+/// Allows for a struct to deserialize itself from a raw byte buffer.
+pub trait BufferPullable: Sized {
+    /// Deserializes an instance of `T` from a byte buffer.
+    ///
+    /// #Errors
+    ///
+    /// Can return a `BufferTooSmall` error when the length of `buffer` is not
+    /// large enough to deserialize from, or a `ParseError` if the buffer
+    /// cannot be deserialized into a valid instance of `T` using the bytes
+    /// provided.
+    fn pull_from_buffer<T: AsRef<[u8]>>(buffer: T) -> Result<Self, ScsiError>;
 }

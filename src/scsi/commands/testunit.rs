@@ -1,11 +1,16 @@
+use error::{ErrorCause, ScsiError};
 use scsi::commands::{Command, CommandBlockWrapper, Direction};
-use traits::{ BufferPushable, BufferPullable};
-use error::{ScsiError, ErrorCause};
+use traits::{BufferPullable, BufferPushable};
 
+/// Asks the device whether or not it is ready for usage.
+///
+/// If the device responds with a `CommandStatusWrapper` without an error,
+/// then the device is ready to be used.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
 pub struct TestUnitReady {}
 
 impl TestUnitReady {
+    /// Constructs a new `TestUnitReady` command.
     pub fn new() -> TestUnitReady {
         TestUnitReady {}
     }
@@ -24,7 +29,7 @@ impl Command for TestUnitReady {
 }
 
 impl BufferPushable for TestUnitReady {
-    fn push_to_buffer<B : AsMut<[u8]>>(&self, mut buffer: B) -> Result<usize, ScsiError> {
+    fn push_to_buffer<B: AsMut<[u8]>>(&self, mut buffer: B) -> Result<usize, ScsiError> {
         let rval = self.wrapper().push_to_buffer(buffer.as_mut())?;
         buffer.as_mut()[rval] = TestUnitReady::opcode();
         Ok(rval + 1)
@@ -32,15 +37,18 @@ impl BufferPushable for TestUnitReady {
 }
 
 impl BufferPullable for TestUnitReady {
-    fn pull_from_buffer<B : AsRef<[u8]>>(buffer: B) -> Result<Self, ScsiError> {
-        let wrapper : CommandBlockWrapper = CommandBlockWrapper::pull_from_buffer(buffer.as_ref())?;
-        if wrapper.data_transfer_length != 0 || !(wrapper.direction == Direction::OUT || wrapper.direction == Direction::NONE)  || wrapper.cb_length != TestUnitReady::length() {
-            return Err(ScsiError::from_cause(ErrorCause::ParseError))
+    fn pull_from_buffer<B: AsRef<[u8]>>(buffer: B) -> Result<Self, ScsiError> {
+        let wrapper: CommandBlockWrapper = CommandBlockWrapper::pull_from_buffer(buffer.as_ref())?;
+        if wrapper.data_transfer_length != 0
+            || !(wrapper.direction == Direction::OUT || wrapper.direction == Direction::NONE)
+            || wrapper.cb_length != TestUnitReady::length()
+        {
+            return Err(ScsiError::from_cause(ErrorCause::ParseError));
         }
-        let buffer = &buffer.as_ref()[16 ..];
+        let buffer = &buffer.as_ref()[16..];
         let opcode = buffer[0];
         if opcode != TestUnitReady::opcode() {
-            return Err(ScsiError::from_cause(ErrorCause::ParseError))
+            return Err(ScsiError::from_cause(ErrorCause::ParseError));
         }
         Ok(TestUnitReady::new())
     }
@@ -49,7 +57,7 @@ impl BufferPullable for TestUnitReady {
 #[cfg(test)]
 mod tests {
     use super::TestUnitReady;
-        use crate::{BufferPullable, BufferPushable};
+    use crate::{BufferPullable, BufferPushable};
 
     #[test]
     pub fn test_tur() {
@@ -58,11 +66,11 @@ mod tests {
             0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00,
         ];
-        let mut buff = [0 ; 32];
+        let mut buff = [0; 32];
         let tur_command = TestUnitReady::new();
         let pushed = tur_command.push_to_buffer(&mut buff).unwrap();
         assert_eq!(pushed, 16);
-        assert_eq!(&buff[0..pushed], &expected[0 .. pushed]);
+        assert_eq!(&buff[0..pushed], &expected[0..pushed]);
 
         let pulled = TestUnitReady::pull_from_buffer(&mut buff).unwrap();
         assert_eq!(pulled, tur_command);
